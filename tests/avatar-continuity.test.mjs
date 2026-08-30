@@ -5,13 +5,13 @@ import { readFile } from "node:fs/promises";
 test("idle and speaking states share the versioned Ditto source and wait for a decoded video frame", async () => {
   const [source, publicMaster, appSource, styles] = await Promise.all([
     readFile(new URL("../ditto-validation/xiaoa-source.png", import.meta.url)),
-    readFile(new URL("../public/assets/xiaoa-ditto-master-v1.0.2.png", import.meta.url)),
+    readFile(new URL("../public/assets/xiaoa-ditto-master-v1.0.3.png", import.meta.url)),
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
   ]);
 
   assert.deepEqual(publicMaster, source);
-  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.2\.png/g) ?? []).length, 1);
+  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.3\.png/g) ?? []).length, 2);
   assert.match(appSource, /digital-human__video/);
   assert.match(appSource, /digital-human__frame/);
   assert.match(appSource, /createImageBitmap/);

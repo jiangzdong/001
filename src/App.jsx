@@ -1,23 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle, EarSlash, Heartbeat, HouseLine, Info,
-  ClipboardText, CloudCheck, Key, ListChecks, LockKey, Microphone, Minus, PaperPlaneTilt, PersonSimpleWalk, Plus, ShieldCheck,
+  ClipboardText, CloudCheck, GearSix, Key, ListChecks, LockKey, Microphone, Minus, PaperPlaneTilt, PersonSimpleWalk, Plus, ShieldCheck,
   SpeakerSimpleHigh, SpeakerSimpleSlash, Speedometer, StopCircle, TextAa, Waveform,
 } from "@phosphor-icons/react";
 import { recordSpeech } from "./speechRecorder.js";
 import { assessmentQuestions as questions } from "./skills/healthAssessment.js";
 import { detectSafetySignal, localInterpretAssessment, resolveOption, validateInterpretation } from "./assessmentUnderstanding.js";
 import { advanceAssessment } from "./assessmentFlow.js";
-import { advanceVisemeBlend, blendVisemeProfiles, createBlinkProfile, createSpeechProsodyTimeline, inferSpeechMood, nextBlinkDelay, sampleBlinkEnvelope, sampleExpressionStrength, sampleSpeechProsody, sampleUpperBodyPose, sampleVisemeTimeline, shouldUseAuthenticAvatar, smoothingAlpha, stabilizeVisemeLabel, updateVisemeGate } from "./avatarMotion.js";
+import { advanceVisemeBlend, blendVisemeProfiles, createBlinkProfile, createSpeechProsodyTimeline, inferSpeechMood, nextBlinkDelay, sampleBlinkEnvelope, sampleExpressionStrength, sampleJawPose, sampleMouthAperture, sampleSpeechProsody, sampleUpperBodyPose, sampleVisemeTimeline, shouldUseAuthenticAvatar, smoothingAlpha, stabilizeVisemeLabel, updateVisemeGate } from "./avatarMotion.js";
 import { buildPersonalizedHealthPlan } from "./skills/personalizedHealthPlan.js";
 import { advanceSymptomConversation, resetSymptomConversation, startSymptomConversation } from "./symptomConversation.js";
 import { buildOffTopicReply } from "./offTopicReply.js";
 import { createIncrementalSpeechSegmenter, createSpeechChunkQueue, createSpeechTurnId, splitSpeechSegments } from "./streamingSpeech.js";
+import { buildLocalFaceActions, loadLocalFaceRigImages, renderLocalFaceRig } from "./localFaceRig.js";
 
 const quickPrompts = ["我最近有点头痛", "最近睡眠不太好", "我想做健康测评"];
 const appVersion = `V${__APP_VERSION__}`;
 const nativeSpeechOutputGain = 2.8;
 const defaultVoiceId = "zh-ll-2";
+const cloudGpuAvailable = false;
 const selectedVoice = { id: defaultVoiceId, label: "小安默认女声", spokenLabel: "小安默认女声", detail: "普通话女声" };
 const visemeProfiles = {
   CLOSED: { open: 0.01, width: 0.94, radius: "48%" },
@@ -39,6 +41,19 @@ function loadVolumePreference() {
     if (Number.isFinite(savedVolume) && savedVolume >= 0 && savedVolume <= 100) return savedVolume;
   } catch {}
   return 80;
+}
+
+function loadAvatarModePreference() {
+  try {
+    return cloudGpuAvailable && window.localStorage.getItem("xiaoan.avatarMode") === "cloud-gpu" ? "cloud-gpu" : "local";
+  } catch {}
+  return "local";
+}
+
+function approachByRate(current, target, deltaMs, unitsPerMs) {
+  const difference = target - current;
+  const maximumStep = Math.max(0, deltaMs) * unitsPerMs;
+  return current + Math.max(-maximumStep, Math.min(maximumStep, difference));
 }
 
 function useModalFocus(open, onClose, dialogRef, initialFocusRef) {
@@ -128,10 +143,12 @@ function SpeechTranscript({ transcript, listening, recognizing }) {
   </div>;
 }
 
-function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, videoSrc, frameActive, frameSinkRef, volume, slow, mood, onVideoEnded, onVideoError }) {
+function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, videoSrc, frameActive, frameSinkRef, volume, slow, mood, avatarMode = "local", onVideoEnded, onVideoError }) {
   const avatarRef = useRef(null);
   const videoRef = useRef(null);
   const frameCanvasRef = useRef(null);
+  const localRigCanvasRef = useRef(null);
+  const localRigImagesRef = useRef(null);
   const videoFrameRef = useRef(null);
   const videoExitTimerRef = useRef(null);
   const speakingRef = useRef(speaking);
@@ -139,6 +156,7 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
   const moodRef = useRef(mood);
   const [videoReady, setVideoReady] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
+  const [localRigReady, setLocalRigReady] = useState(false);
   const [videoSettling, setVideoSettling] = useState(false);
   const videoErrorRef = useRef(onVideoError);
   speakingRef.current = speaking;
@@ -225,6 +243,29 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     video.playbackRate = slow ? 0.82 : 1;
   }, [slow, volume]);
   useEffect(() => {
+    let cancelled = false;
+    if (avatarMode !== "local") {
+      localRigImagesRef.current = null;
+      setLocalRigReady(false);
+      localRigCanvasRef.current?.getContext("2d")?.clearRect(0, 0, localRigCanvasRef.current.width, localRigCanvasRef.current.height);
+      return undefined;
+    }
+    loadLocalFaceRigImages().then((images) => {
+      if (cancelled) return;
+      localRigImagesRef.current = images;
+      const master = images.get("CLOSED");
+      const canvas = localRigCanvasRef.current;
+      if (canvas && master) {
+        canvas.width = master.naturalWidth;
+        canvas.height = master.naturalHeight;
+      }
+      setLocalRigReady(true);
+    }).catch(() => {
+      if (!cancelled) setLocalRigReady(false);
+    });
+    return () => { cancelled = true; };
+  }, [avatarMode]);
+  useEffect(() => {
     const avatar = avatarRef.current;
     if (!avatar) return undefined;
     let frame = 0;
@@ -233,6 +274,7 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     let smoothedOpen = 0;
     let smoothedOpacity = 0;
     let smoothedWidth = 1;
+    let smoothedJawOpen = 0;
     let smoothedMotion = 1;
     let smoothedExpressionStrength = 0;
     let adaptivePeak = 0.06;
@@ -240,10 +282,9 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     let gateState = { open: false, closeAt: lastTimestamp };
     let visemeState = { displayed: "CLOSED", candidate: "CLOSED", candidateSince: lastTimestamp, changedAt: lastTimestamp };
     let visemeBlend = advanceVisemeBlend(null, "CLOSED", lastTimestamp);
-    const mouthFrameNodes = new Map(
-      ["REST", "A", "E", "O", "U", "F", "L", "S", "SH"]
-        .map((label) => [label, avatar.querySelector(`.digital-human__mouth-frame--${label.toLowerCase()}`)]),
-    );
+    let renderedMouthWeights = {};
+    let lastRigPaintAt = 0;
+    let lastRigSignature = "";
     let wasOfflineSpeaking = false;
     let speechStartedAt = -1;
     let settleUntil = 0;
@@ -252,7 +293,7 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     let pendingDoubleBlink = false;
     let blinkStrength = 1;
     let blinkProfile = createBlinkProfile(Math.random());
-    let renderedBodyPose = { x: 0, y: 0, tilt: 0, scale: 1, breath: 0 };
+    let renderedBodyPose = { x: 0, y: 0, tilt: 0, scale: 1, breath: 0, chestRise: 0, chestScaleX: 1, chestScaleY: 1 };
     let blinkBodyPose = null;
     const normalizeMood = (value) => (["smile", "concern", "encourage", "listening"].includes(value) ? value : "neutral");
     let displayedMood = normalizeMood(moodRef.current);
@@ -262,9 +303,13 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     let smoothedMoodY = 0;
     const animateMouth = (timestamp) => {
       const deltaMs = Math.max(1, Math.min(80, timestamp - lastTimestamp));
+      const facialDeltaMs = Math.min(34, deltaMs);
       lastTimestamp = timestamp;
       const offlineSpeaking = Boolean(speakingRef.current && !videoActiveRef.current);
-      if (offlineSpeaking && !wasOfflineSpeaking) speechStartedAt = timestamp;
+      if (offlineSpeaking && !wasOfflineSpeaking) {
+        speechStartedAt = timestamp;
+        renderedMouthWeights = {};
+      }
       if (wasOfflineSpeaking && !offlineSpeaking) settleUntil = timestamp + 520;
       if (!offlineSpeaking && timestamp >= settleUntil) speechStartedAt = -1;
       wasOfflineSpeaking = offlineSpeaking;
@@ -302,20 +347,45 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       const levelAlpha = smoothingAlpha(deltaMs, targetLevel > smoothedLevel ? 34 : 72);
       smoothedLevel += (targetLevel - smoothedLevel) * levelAlpha;
       gateState = updateVisemeGate(gateState, smoothedLevel, timestamp, offlineSpeaking);
-      const desiredOpen = offlineSpeaking
-        ? Math.min(1, profile.open * (0.075 + smoothedLevel * 1.02))
-        : 0;
-      const openTime = offlineSpeaking ? (desiredOpen > smoothedOpen ? 36 : 72) : settling ? 150 : 240;
-      smoothedOpen += (desiredOpen - smoothedOpen) * smoothingAlpha(deltaMs, openTime);
+      const desiredOpen = sampleMouthAperture({
+        profileOpen: profile.open,
+        energy: smoothedLevel,
+        timelineDriven,
+        speaking: offlineSpeaking,
+      });
+      const openTime = offlineSpeaking ? (desiredOpen > smoothedOpen ? 48 : 88) : settling ? 150 : 240;
+      const openCandidate = smoothedOpen + (desiredOpen - smoothedOpen) * smoothingAlpha(facialDeltaMs, openTime);
+      smoothedOpen = approachByRate(smoothedOpen, openCandidate, facialDeltaMs, desiredOpen > smoothedOpen ? 0.0055 : 0.0042);
       const desiredOpacity = offlineSpeaking ? Math.min(0.94, 0.11 + smoothedOpen * 0.9) : 0;
-      smoothedOpacity += (desiredOpacity - smoothedOpacity) * smoothingAlpha(deltaMs, offlineSpeaking ? 48 : settling ? 110 : 180);
+      smoothedOpacity += (desiredOpacity - smoothedOpacity) * smoothingAlpha(facialDeltaMs, offlineSpeaking ? 58 : settling ? 110 : 180);
       const desiredWidth = offlineSpeaking ? profile.width : 1;
-      smoothedWidth += (desiredWidth - smoothedWidth) * smoothingAlpha(deltaMs, offlineSpeaking ? 64 : 320);
+      smoothedWidth += (desiredWidth - smoothedWidth) * smoothingAlpha(facialDeltaMs, offlineSpeaking ? 72 : 320);
+      // The selected photographic viseme already contains its authored lower-
+      // lip displacement. Give the chin a matching aperture floor even when a
+      // quiet syllable has low PCM energy, otherwise the lower lip approaches a
+      // fixed chin and makes this identity's naturally long chin look shorter.
+      const authoredJawAperture = offlineSpeaking
+        ? Math.max(0, profile.open - visemeProfiles.CLOSED.open) * (0.62 + smoothedLevel * 0.18)
+        : 0;
+      const jawTarget = sampleJawPose({ mouthOpen: Math.max(smoothedOpen, authoredJawAperture), energy: smoothedLevel, speaking: offlineSpeaking });
+      // The mouth and chin now live in the same lower-face replacement, so they
+      // always arrive together. Cap the follower's frame delta as well as its
+      // rate to prevent a delayed render frame from creating a visible jaw snap.
+      const jawDeltaMs = Math.min(facialDeltaMs, 32);
+      const jawCandidate = smoothedJawOpen + (jawTarget.open - smoothedJawOpen) * smoothingAlpha(jawDeltaMs, jawTarget.open > smoothedJawOpen ? 64 : settling ? 98 : 104);
+      smoothedJawOpen = approachByRate(smoothedJawOpen, jawCandidate, jawDeltaMs, jawTarget.open > smoothedJawOpen ? 0.00135 : 0.0012);
+      const jawPose = sampleJawPose({ mouthOpen: smoothedJawOpen, energy: smoothedLevel, speaking: offlineSpeaking || settling });
       avatar.style.setProperty("--mouth-open", smoothedOpen.toFixed(3));
       avatar.style.setProperty("--mouth-shift", `${(smoothedOpen * 0.48).toFixed(3)}cqw`);
       avatar.style.setProperty("--mouth-opacity", smoothedOpacity.toFixed(3));
       avatar.style.setProperty("--mouth-width", smoothedWidth.toFixed(3));
       avatar.style.setProperty("--mouth-radius", profile.radius);
+      avatar.style.setProperty("--jaw-open", smoothedJawOpen.toFixed(3));
+      avatar.style.setProperty("--jaw-drop", `${jawPose.drop.toFixed(3)}cqw`);
+      avatar.style.setProperty("--jaw-scale-y", jawPose.scaleY.toFixed(5));
+      avatar.style.setProperty("--jaw-scale-x", jawPose.scaleX.toFixed(5));
+      avatar.style.setProperty("--cheek-release", jawPose.cheek.toFixed(3));
+      avatar.dataset.jawOpen = smoothedJawOpen.toFixed(3);
       // A timestamped PCM timeline already contains real silence anchors. Do
       // not let a low-energy sustained vowel force the visible sprite back to
       // CLOSED; energy controls aperture, while the timeline controls shape.
@@ -324,16 +394,23 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       if (timelineDriven) {
         let timelineMix = Math.min(1, Math.max(0, Number(sample.mix) || 0));
         if (Math.abs(timelineMix - 0.5) < 0.0001) timelineMix = 0.5001;
-        const weights = {};
-        if (sample.current !== "CLOSED" && 1 - timelineMix > 0.000001) weights[sample.current] = (weights[sample.current] || 0) + (1 - timelineMix);
-        if (sample.next !== "CLOSED" && timelineMix > 0.000001) weights[sample.next] = (weights[sample.next] || 0) + timelineMix;
-        visemeBlend = { mix: timelineMix, dominant: timelineMix < 0.5 ? sample.current : sample.next, weights };
-      } else visemeBlend = advanceVisemeBlend(visemeBlend, visemeState.displayed, timestamp);
-      for (const [label, node] of mouthFrameNodes) {
-        if (node) node.style.opacity = String(visemeBlend.weights[label] || 0);
+        // Photographic mouth sprites must never be alpha-blended: two lip
+        // textures at once look soft even when their landmarks are aligned.
+        // The continuous jaw/lower-face deformation carries the in-between
+        // motion while the sharp sprite changes at the coarticulation midpoint.
+        const dominant = timelineMix < 0.5 ? sample.current : sample.next;
+        renderedMouthWeights = dominant && dominant !== "CLOSED" ? { [dominant]: 1 } : {};
+        visemeBlend = { mix: timelineMix, dominant, weights: renderedMouthWeights };
+      } else {
+        const blended = advanceVisemeBlend(visemeBlend, visemeState.displayed, timestamp);
+        const dominant = blended.dominant;
+        renderedMouthWeights = dominant && dominant !== "CLOSED" ? { [dominant]: 1 } : {};
+        visemeBlend = { ...blended, dominant, weights: renderedMouthWeights };
       }
       avatar.dataset.viseme = visemeBlend.dominant;
       avatar.dataset.visemeTarget = timelineDriven ? profile.label : visemeState.displayed;
+      avatar.dataset.visemeCurrent = sample.current || "CLOSED";
+      avatar.dataset.visemeNext = sample.next || sample.current || "CLOSED";
       avatar.dataset.visemeBlend = visemeBlend.mix.toFixed(3);
       const activeEventIndex = Math.min(
         Math.max(0, Number(sample.eventIndex) || 0) + (Number(sample.mix) >= 0.5 ? 1 : 0),
@@ -372,9 +449,24 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
         energy: smoothedLevel,
         prosody,
       });
-      smoothedExpressionStrength += (expressionTarget - smoothedExpressionStrength) * smoothingAlpha(deltaMs, expressionTarget > smoothedExpressionStrength ? 680 : 900);
+      smoothedExpressionStrength += (expressionTarget - smoothedExpressionStrength) * smoothingAlpha(facialDeltaMs, expressionTarget > smoothedExpressionStrength ? 760 : 960);
       avatar.style.setProperty("--expression-strength", smoothedExpressionStrength.toFixed(3));
       avatar.dataset.semanticExpression = displayedMood;
+      const localFaceActions = buildLocalFaceActions({
+        viseme: offlineSpeaking ? visemeBlend.dominant : "CLOSED",
+        mouthOpen: smoothedJawOpen,
+        mouthWidth: smoothedWidth,
+        expression: displayedMood,
+        expressionStrength: smoothedExpressionStrength,
+      });
+      const rigSignature = `${localFaceActions.viseme}|${localFaceActions.jawOpen.toFixed(3)}|${localFaceActions.mouthStretchLeft.toFixed(3)}|${localFaceActions.mouthPucker.toFixed(3)}`;
+      if (avatarMode === "local" && localRigReady && (rigSignature !== lastRigSignature || timestamp - lastRigPaintAt >= 33)) {
+        if (renderLocalFaceRig(localRigCanvasRef.current, localRigImagesRef.current, localFaceActions)) {
+          lastRigPaintAt = timestamp;
+          lastRigSignature = rigSignature;
+          avatar.dataset.localRig = "local-mouth-chin-v2";
+        }
+      }
       const bodyPose = sampleUpperBodyPose({
         elapsedMs: timestamp,
         speaking: offlineSpeaking,
@@ -395,6 +487,9 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
           tilt: renderedBodyPose.tilt + (bodyPose.tilt - renderedBodyPose.tilt) * postureAlpha,
           scale: renderedBodyPose.scale + (bodyPose.scale - renderedBodyPose.scale) * postureAlpha,
           breath: renderedBodyPose.breath + (bodyPose.breath - renderedBodyPose.breath) * postureAlpha,
+          chestRise: renderedBodyPose.chestRise + (bodyPose.chestRise - renderedBodyPose.chestRise) * postureAlpha,
+          chestScaleX: renderedBodyPose.chestScaleX + (bodyPose.chestScaleX - renderedBodyPose.chestScaleX) * postureAlpha,
+          chestScaleY: renderedBodyPose.chestScaleY + (bodyPose.chestScaleY - renderedBodyPose.chestScaleY) * postureAlpha,
         };
       }
       avatar.style.setProperty("--body-x", `${renderedBodyPose.x.toFixed(3)}cqw`);
@@ -402,6 +497,9 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       avatar.style.setProperty("--body-tilt", `${renderedBodyPose.tilt.toFixed(3)}deg`);
       avatar.style.setProperty("--body-scale", renderedBodyPose.scale.toFixed(5));
       avatar.style.setProperty("--breath-phase", renderedBodyPose.breath.toFixed(3));
+      avatar.style.setProperty("--chest-rise", `${renderedBodyPose.chestRise.toFixed(3)}cqw`);
+      avatar.style.setProperty("--chest-scale-x", renderedBodyPose.chestScaleX.toFixed(5));
+      avatar.style.setProperty("--chest-scale-y", renderedBodyPose.chestScaleY.toFixed(5));
       // Keep legacy variables for diagnostics that predate the lower-torso
       // pivot. Rendering now uses the body variables below.
       avatar.style.setProperty("--head-x", `${renderedBodyPose.x.toFixed(3)}cqw`);
@@ -472,12 +570,19 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       avatar.style.setProperty("--mouth-shift", "0cqw");
       avatar.style.setProperty("--mouth-opacity", "0");
       avatar.style.setProperty("--mouth-width", "1");
-      for (const node of mouthFrameNodes.values()) if (node) node.style.opacity = "0";
+      avatar.style.setProperty("--jaw-open", "0");
+      avatar.style.setProperty("--jaw-drop", "0cqw");
+      avatar.style.setProperty("--jaw-scale-y", "1");
+      avatar.style.setProperty("--jaw-scale-x", "1");
+      avatar.style.setProperty("--cheek-release", "0");
       avatar.style.setProperty("--body-x", "0cqw");
       avatar.style.setProperty("--body-y", "0cqw");
       avatar.style.setProperty("--body-tilt", "0deg");
       avatar.style.setProperty("--body-scale", "1");
       avatar.style.setProperty("--breath-phase", "0");
+      avatar.style.setProperty("--chest-rise", "0cqw");
+      avatar.style.setProperty("--chest-scale-x", "1");
+      avatar.style.setProperty("--chest-scale-y", "1");
       avatar.style.setProperty("--head-x", "0cqw");
       avatar.style.setProperty("--head-y", "0cqw");
       avatar.style.setProperty("--head-tilt", "0deg");
@@ -486,19 +591,24 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       avatar.style.setProperty("--expression-strength", "0");
       delete avatar.dataset.viseme;
       delete avatar.dataset.visemeTarget;
+      delete avatar.dataset.visemeCurrent;
+      delete avatar.dataset.visemeNext;
       delete avatar.dataset.visemeBlend;
       delete avatar.dataset.visemeCharacter;
       delete avatar.dataset.visemeEvent;
       delete avatar.dataset.visemeCharacterIndex;
       delete avatar.dataset.visemeRole;
       delete avatar.dataset.visemeAlignment;
+      delete avatar.dataset.jawOpen;
       delete avatar.dataset.expression;
       delete avatar.dataset.semanticExpression;
       delete avatar.dataset.blinkPhase;
       delete avatar.dataset.avatarState;
       delete avatar.dataset.motionPhase;
+      delete avatar.dataset.localRig;
+      localRigCanvasRef.current?.getContext("2d")?.clearRect(0, 0, localRigCanvasRef.current.width, localRigCanvasRef.current.height);
     };
-  }, [analyserRef, visemeTimelineRef]);
+  }, [analyserRef, avatarMode, localRigReady, visemeTimelineRef]);
 
   const finishVideo = () => {
     clearVideoFrame();
@@ -512,25 +622,18 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     }, 320);
   };
   const failVideo = () => { clearVideoFrame(); clearVideoExitTimer(); setVideoSettling(false); setVideoReady(false); onVideoError?.(); };
-  return <div ref={avatarRef} data-mood={mood} className={`digital-human ${speaking ? "is-speaking" : ""} ${(videoActive && videoReady) || (frameActive && frameReady) ? "has-ready-video" : ""} ${videoSettling ? "is-video-settling" : ""}`}>
-    <img src="./assets/xiaoa-ditto-master-v1.0.2.png" alt="写实数字健康管理师小安" className="digital-human__image"/>
-    <img src="./assets/xiaoa-viseme-rest-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--rest" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-a-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--a" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-e-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--e" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-o-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--o" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-u-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--u" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-f-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--f" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-l-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--l" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-s-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--s" aria-hidden="true"/>
-    <img src="./assets/xiaoa-viseme-sh-v3.png" alt="" className="digital-human__mouth-frame digital-human__mouth-frame--sh" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-smile-v2.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--smile" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-concern-v2.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--concern" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-encourage-v2.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--encourage" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-listening-v2.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--listening" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-half-v4.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-left" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-half-v4.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-right" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-closed-v2.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-left" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-closed-v2.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-right" aria-hidden="true"/>
+  return <div ref={avatarRef} data-mood={mood} data-avatar-mode={avatarMode} className={`digital-human ${speaking ? "is-speaking" : ""} ${avatarMode === "local" && localRigReady ? "has-local-rig" : ""} ${(videoActive && videoReady) || (frameActive && frameReady) ? "has-ready-video" : ""} ${videoSettling ? "is-video-settling" : ""}`}>
+    <img src="./assets/xiaoa-ditto-master-v1.0.3.png" alt="写实数字健康管理师小安" className="digital-human__image"/>
+    <img src="./assets/xiaoa-ditto-master-v1.0.3.png" alt="" className="digital-human__breath-frame" aria-hidden="true"/>
+    <canvas ref={localRigCanvasRef} className="digital-human__local-rig" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-smile-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--smile" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-concern-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--concern" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-encourage-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--encourage" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-listening-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--listening" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-half-v5.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-left" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-half-v5.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-right" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-closed-v3.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-left" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-closed-v3.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-right" aria-hidden="true"/>
     <video ref={videoRef} className="digital-human__video" src={videoSrc} preload="auto" playsInline onLoadedData={confirmVideoFrame} onPlaying={confirmVideoFrame} onEnded={finishVideo} onError={failVideo} aria-label="小安同步嘴型讲解"/>
     <canvas ref={frameCanvasRef} className="digital-human__frame" aria-label="小安实时嘴型帧流"/>
   </div>;
@@ -561,6 +664,8 @@ export function App() {
   const [volume, setVolume] = useState(loadVolumePreference);
   const [showVolumeControl, setShowVolumeControl] = useState(false);
   const [slow, setSlow] = useState(false);
+  const [avatarMode, setAvatarMode] = useState(loadAvatarModePreference);
+  const [showAvatarSettings, setShowAvatarSettings] = useState(false);
   const [toast, setToast] = useState(null);
   const [symptomConversation, setSymptomConversation] = useState(null);
   const [aiChoices, setAiChoices] = useState([]);
@@ -591,6 +696,8 @@ export function App() {
   const announcementTimerRef = useRef(null);
   const keyDialogRef = useRef(null);
   const keyInputRef = useRef(null);
+  const avatarSettingsDialogRef = useRef(null);
+  const avatarSettingsLocalRef = useRef(null);
   const chatStreamRef = useRef(null);
   const foreheadTapsRef = useRef([]);
   const currentQuestion = questions[questionIndex];
@@ -598,7 +705,7 @@ export function App() {
   const hasWebRecognition = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
   const hasLocalWebRecognition = !window.kioskBridge && Boolean(navigator.mediaDevices?.getUserMedia);
   const recognitionSupported = hasNativeRecognition || hasWebRecognition || hasLocalWebRecognition;
-  const autoListenAllowed = screen === "talk" && !listening && !recognizing && !speaking && !speechPreparing && !avatarPreparing && !aiBusy && !showKeySetup;
+  const autoListenAllowed = screen === "talk" && !listening && !recognizing && !speaking && !speechPreparing && !avatarPreparing && !aiBusy && !showKeySetup && !showAvatarSettings;
   autoListenAllowedRef.current = autoListenAllowed;
   const muted = volume === 0;
   const result = useMemo(() => buildPersonalizedHealthPlan(answers), [answers]);
@@ -614,7 +721,9 @@ export function App() {
         ? "smile"
         : "neutral";
   const closeKeySetup = useCallback(() => setShowKeySetup(false), []);
+  const closeAvatarSettings = useCallback(() => setShowAvatarSettings(false), []);
   useModalFocus(showKeySetup, closeKeySetup, keyDialogRef, keyInputRef);
+  useModalFocus(showAvatarSettings, closeAvatarSettings, avatarSettingsDialogRef, avatarSettingsLocalRef);
 
   const notify = useCallback((text, kind = "info") => {
     const message = String(text || "").trim();
@@ -653,6 +762,15 @@ export function App() {
     setSpeechPreparing(false);
     setSpeaking(false);
   }, [clearDittoSpeechVideo]);
+
+  const chooseAvatarMode = useCallback((nextMode) => {
+    if (nextMode === "cloud-gpu" && !cloudGpuAvailable) return;
+    const normalized = nextMode === "cloud-gpu" ? "cloud-gpu" : "local";
+    stopSpeaking();
+    setAvatarMode(normalized);
+    try { window.localStorage.setItem("xiaoan.avatarMode", normalized); } catch {}
+    setShowAvatarSettings(false);
+  }, [stopSpeaking]);
 
   const updateVolume = useCallback((nextValue) => {
     const nextVolume = Math.min(100, Math.max(0, Math.round(Number(nextValue) || 0)));
@@ -921,9 +1039,9 @@ export function App() {
         return false;
       }
     };
-    if (authentic) return startAuthenticFrameStream().then((started) => (started || !isCurrentTurn() ? started : playSegmentedSpeech()));
+    if (authentic && avatarMode === "cloud-gpu") return startAuthenticFrameStream().then((started) => (started || !isCurrentTurn() ? started : playSegmentedSpeech()));
     return playSegmentedSpeech();
-  }, [muted, notify, selectedVoice, slow, stopSpeaking, volume]);
+  }, [avatarMode, muted, notify, selectedVoice, slow, stopSpeaking, volume]);
 
   useEffect(() => {
     if (!window.kioskBridge?.qaAvatar) return undefined;
@@ -1486,7 +1604,7 @@ export function App() {
 
   return <div className={`kiosk-shell ${window.kioskBridge ? "runtime-electron" : "runtime-web"} ${largeText ? "large-text" : ""} screen-${screen}`}>
     <div className="portrait-stage" aria-label="数字健康管理师小安">
-      <DigitalHuman speaking={speaking} analyserRef={speechAnalyserRef} visemeTimelineRef={speechVisemeTimelineRef} videoActive={(screen === "welcome" || screen === "talk") && (dittoIntroActive || dittoSpeechActive)} videoSrc={dittoSpeechActive ? dittoSpeechSrc : "./assets/xiaoa-ditto-welcome-v1.mp4"} frameActive={screen === "talk" && dittoFrameActive} frameSinkRef={dittoFrameSinkRef} volume={volume} slow={slow} mood={avatarExpression} onVideoEnded={handleDittoVideoEnded} onVideoError={handleDittoVideoError}/>
+      <DigitalHuman speaking={speaking} analyserRef={speechAnalyserRef} visemeTimelineRef={speechVisemeTimelineRef} videoActive={(screen === "welcome" || screen === "talk") && (dittoIntroActive || dittoSpeechActive)} videoSrc={dittoSpeechActive ? dittoSpeechSrc : "./assets/xiaoa-ditto-welcome-v1.mp4"} frameActive={screen === "talk" && dittoFrameActive} frameSinkRef={dittoFrameSinkRef} volume={volume} slow={slow} mood={avatarExpression} avatarMode={avatarMode} onVideoEnded={handleDittoVideoEnded} onVideoError={handleDittoVideoError}/>
       <button className="forehead-admin-trigger" type="button" data-admin-tap-count="0" onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); handleForeheadTap(event.currentTarget); }} onContextMenu={(event) => event.preventDefault()} tabIndex={-1} aria-label="管理员入口五连击"/>
       <div className="stage-glow"/><div className={`voice-aura ${speaking || listening ? "is-active" : ""}`} aria-hidden="true"><i/><i/><i/></div>
       <header className="topbar">
@@ -1497,6 +1615,7 @@ export function App() {
             <TopControlButton icon={muted ? SpeakerSimpleSlash : SpeakerSimpleHigh} label="音量" detail={muted ? "静音" : `${volume}%`} active={showVolumeControl} onClick={() => setShowVolumeControl((value) => !value)} aria-expanded={showVolumeControl} aria-controls="volume-control-panel"/>
             <TopControlButton icon={TextAa} label="大字" detail={largeText ? "已放大" : "标准"} active={largeText} onClick={() => setLargeText((value) => !value)}/>
             <TopControlButton icon={Speedometer} label="慢速" detail={slow ? "已开启" : "正常"} active={slow} onClick={() => setSlow((value) => !value)}/>
+            <TopControlButton icon={GearSix} label="设置" detail={avatarMode === "local" ? "本地" : "云GPU"} active={showAvatarSettings} onClick={() => { setShowVolumeControl(false); setShowAvatarSettings(true); }} aria-expanded={showAvatarSettings} aria-controls="avatar-settings-dialog"/>
           </div>
           {!aiReady && <button type="button" className="online" onClick={() => window.kioskBridge?.deepSeekStatus ? setShowKeySetup(true) : notify("请在桌面版配置智能对话")} aria-label="小安未配置，请在桌面版连接智能对话"><i/>连接</button>}
         </div>
@@ -1521,5 +1640,17 @@ export function App() {
       <label htmlFor="api-key"><Key/>DeepSeek API Key</label><input ref={keyInputRef} id="api-key" type="password" value={keyDraft} onChange={(event) => setKeyDraft(event.target.value)} placeholder="粘贴新的 sk-... 密钥" autoComplete="off"/>
       <button className="primary-action wide" type="submit" disabled={!keyDraft.trim()}>安全保存并开始对话</button><button className="secondary-action wide" type="button" onClick={() => setShowKeySetup(false)}>先体验本地对话</button>
     </form></div>}
+    {showAvatarSettings && <div className="setup-scrim" role="dialog" aria-modal="true" aria-labelledby="avatar-settings-title" aria-describedby="avatar-settings-help"><section ref={avatarSettingsDialogRef} id="avatar-settings-dialog" className="setup-card avatar-settings-card">
+      <div className="setup-icon"><GearSix weight="duotone"/></div><p>数字人设置</p><h2 id="avatar-settings-title">选择口型运行方式</h2><small id="avatar-settings-help">本地模式已启用；云GPU入口为后续接入预留。</small>
+      <div className="avatar-mode-options" role="radiogroup" aria-label="口型运行方式">
+        <button ref={avatarSettingsLocalRef} type="button" role="radio" aria-checked={avatarMode === "local"} className={`avatar-mode-option ${avatarMode === "local" ? "is-selected" : ""}`} onClick={() => chooseAvatarMode("local")}>
+          <span className="avatar-mode-option__icon"><Waveform weight="bold"/></span><span><strong>本地</strong><small>单嘴唇与下巴特征 · 默认</small></span><i><Check weight="bold"/></i>
+        </button>
+        <button type="button" role="radio" aria-checked="false" className="avatar-mode-option is-disabled" disabled aria-describedby="cloud-gpu-status">
+          <span className="avatar-mode-option__icon"><CloudCheck weight="bold"/></span><span><strong>云GPU</strong><small id="cloud-gpu-status">后续接入</small></span><em>未开放</em>
+        </button>
+      </div>
+      <button className="secondary-action wide" type="button" onClick={closeAvatarSettings}>关闭</button>
+    </section></div>}
   </div>;
 }

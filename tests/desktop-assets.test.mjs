@@ -13,14 +13,15 @@ test("desktop build uses file-compatible relative asset paths", async () => {
 });
 
 test("2D digital human uses a real Ditto intro and a complete identity-locked offline viseme library", async () => {
-  const visemeFiles = ["rest-v3", "a-v3", "e-v3", "o-v3", "u-v3", "f-v3", "l-v3", "s-v3", "sh-v3"];
-  const expressionFiles = ["smile-v2", "concern-v2", "encourage-v2", "listening-v2"];
-  const [appSource, styles, portrait, blinkHalf, blinkClosed, dittoVideo, ...visualFrames] = await Promise.all([
+  const visemeFiles = ["rest-v4", "a-v4", "e-v4", "o-v4", "u-v4", "f-v4", "l-v4", "s-v4", "sh-v4"];
+  const expressionFiles = ["smile-v3", "concern-v3", "encourage-v3", "listening-v3"];
+  const [appSource, styles, rigSource, portrait, blinkHalf, blinkClosed, dittoVideo, ...visualFrames] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
-    readFile(new URL("../public/assets/xiaoa-ditto-master-v1.0.2.png", import.meta.url)),
-    readFile(new URL("../public/assets/xiaoa-blink-half-v4.png", import.meta.url)),
-    readFile(new URL("../public/assets/xiaoa-blink-closed-v2.png", import.meta.url)),
+    readFile(new URL("../src/localFaceRig.js", import.meta.url), "utf8"),
+    readFile(new URL("../public/assets/xiaoa-ditto-master-v1.0.3.png", import.meta.url)),
+    readFile(new URL("../public/assets/xiaoa-blink-half-v5.png", import.meta.url)),
+    readFile(new URL("../public/assets/xiaoa-blink-closed-v3.png", import.meta.url)),
     readFile(new URL("../public/assets/xiaoa-ditto-welcome-v1.mp4", import.meta.url)),
     ...visemeFiles.map((name) => readFile(new URL(`../public/assets/xiaoa-viseme-${name}.png`, import.meta.url))),
     ...expressionFiles.map((name) => readFile(new URL(`../public/assets/xiaoa-expression-${name}.png`, import.meta.url))),
@@ -29,7 +30,7 @@ test("2D digital human uses a real Ditto intro and a complete identity-locked of
   assert.match(appSource, /createAnalyser\(\)/);
   assert.match(appSource, /const visemeProfiles =/);
   assert.match(appSource, /dataset\.viseme/);
-  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.2\.png/g) ?? []).length, 1);
+  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.3\.png/g) ?? []).length, 2);
   assert.doesNotMatch(appSource, /avatarClipByText|heygen-welcome-v1/);
   assert.match(appSource, /xiaoa-ditto-welcome-v1\.mp4/);
   assert.match(appSource, /onEnded=\{finishVideo\}/);
@@ -38,20 +39,29 @@ test("2D digital human uses a real Ditto intro and a complete identity-locked of
   assert.match(appSource, /fallbackFromDittoIntro/);
   assert.match(styles, /\.digital-human\.has-ready-video \.digital-human__video\{visibility:visible\}/);
   assert.match(styles, /\.screen-talk \.digital-human__video,[\s\S]*object-position:50% 0/);
-  assert.equal((appSource.match(/<img[^>]+digital-human__mouth-frame/g) ?? []).length, 9);
-  for (const name of visemeFiles) assert.match(appSource, new RegExp(`xiaoa-viseme-${name}\\.png`));
+  assert.equal((appSource.match(/<img[^>]+digital-human__mouth-frame/g) ?? []).length, 0);
+  assert.doesNotMatch(appSource, /digital-human__mouth-frame/);
+  assert.doesNotMatch(styles, /digital-human__mouth-frame/);
+  for (const name of visemeFiles) assert.match(rigSource, new RegExp(`xiaoa-viseme-${name}\\.png`));
   assert.doesNotMatch(appSource, /xiaoa-mouth-atlas-v1\.png|digital-human__mouth-sprite/);
-  for (const shape of ["REST", "A", "E", "O", "U", "F", "L", "S", "SH"]) assert.match(styles, new RegExp(`data-viseme="${shape}"`));
-  assert.match(styles, /ellipse 9\.6cqw 4\.1cqw at 50cqw 50\.85cqw/);
+  for (const shape of ["REST", "A", "E", "O", "U", "F", "L", "S", "SH"]) assert.match(rigSource, new RegExp(`${shape}:`));
+  assert.match(appSource, /digital-human__local-rig/);
+  assert.match(styles, /\.digital-human\.has-local-rig \.digital-human__local-rig \{ opacity:1; visibility:visible; \}/);
+  assert.doesNotMatch(appSource, /digital-human__jaw-frame/);
+  assert.match(appSource, /digital-human__breath-frame/);
+  assert.match(styles, /--chest-rise[\s\S]*--chest-scale-x[\s\S]*--chest-scale-y/);
+  assert.doesNotMatch(styles, /mask-composite:exclude|webkit-mask-composite:xor/);
+  assert.match(styles, /transparent 76cqw[\s\S]*#000 92cqw/);
   assert.doesNotMatch(styles, /digital-human__mouth-cavity/);
-  assert.match(appSource, /xiaoa-blink-half-v4\.png/);
-  assert.match(appSource, /xiaoa-blink-closed-v2\.png/);
+  assert.match(appSource, /xiaoa-blink-half-v5\.png/);
+  assert.match(appSource, /xiaoa-blink-closed-v3\.png/);
   assert.match(appSource, /digital-human__blink-frame--screen-right/);
   assert.match(styles, /digital-human__blink-frame--screen-right \{[\s\S]*ellipse 5\.65cqw 1\.9cqw at 56cqw/);
   assert.equal((appSource.match(/<img[^>]+digital-human__expression-frame/g) ?? []).length, 4);
   for (const name of expressionFiles) assert.match(appSource, new RegExp(`xiaoa-expression-${name}\\.png`));
   assert.match(styles, /data-semantic-expression="encourage"[\s\S]*digital-human__expression-frame--encourage/);
-  assert.doesNotMatch(styles, /\.digital-human\[data-expression="blink"\] \.digital-human__expression-frame/);
+  assert.match(styles, /\.digital-human\[data-expression="blink"\] \.digital-human__expression-frame \{ transition:none; \}/);
+  assert.doesNotMatch(styles.match(/\.digital-human\[data-expression="blink"\] \.digital-human__expression-frame \{[^}]*\}/)?.[0] || "", /opacity:\s*0|visibility:\s*hidden|display:\s*none/);
   assert.match(appSource, /dataset\.semanticExpression = displayedMood/);
   assert.match(styles, /data-blink-phase="half"[\s\S]*digital-human__blink-frame--half/);
   assert.match(styles, /data-blink-phase="closed"[\s\S]*digital-human__blink-frame--closed/);
@@ -166,7 +176,7 @@ test("secondary screens remain visually stable during continuous voice turns", a
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
   ]);
 
-  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.2\.png/g) ?? []).length, 1);
+  assert.equal((appSource.match(/xiaoa-ditto-master-v1\.0\.3\.png/g) ?? []).length, 2);
   assert.match(appSource, /startListening\(\{ automatic: true \}\)/);
   assert.match(appSource, /listeningOperationRef/);
   assert.match(appSource, /autoListenAllowedRef/);
@@ -174,8 +184,8 @@ test("secondary screens remain visually stable during continuous voice turns", a
   assert.match(styles, /\.digital-human\.is-speaking\{animation:none\}/);
   assert.match(styles, /\.voice-aura\{display:none\}/);
   assert.match(styles, /\.panel-enter\{animation:none\}/);
-  assert.match(styles, /\.kiosk-shell \{[^}]*box-shadow:none/);
-  assert.match(styles, /\.kiosk-shell\.runtime-electron \{[^}]*left:50%; top:50%;[^}]*width:min\(100vw,calc\(100dvh \* \.625\)\); height:min\(100dvh,calc\(100vw \* 1\.6\)\);[^}]*translate:-50% -50%/);
+  assert.match(styles, /\.kiosk-shell \{[^}]*border-radius:[^;]+; box-shadow:0 20px 60px/);
+  assert.match(styles, /\.kiosk-shell\.runtime-electron \{[^}]*left:50%; top:50%;[^}]*--shell-inline-gutter[^}]*--shell-block-gutter[^}]*translate:-50% -50%/);
   assert.match(styles, /\.digital-human \{[^}]*pointer-events:none/);
   assert.match(styles, /\.portrait-stage::before \{[^}]*pointer-events:none/);
   assert.doesNotMatch(styles, /rotate:(?:-)?90deg/);
@@ -254,7 +264,7 @@ test("portrait talk mode keeps one shared stage boundary and independent top con
   assert.match(styles, /\.topbar-home \{[\s\S]*?min-height: 7\.4cqw/);
 });
 
-test("V1.4.10 keeps one avatar camera baseline, fits the portrait canvas to the display height, exposes the version, and packages all skills", async () => {
+test("V1.4.13 keeps one avatar camera baseline, fits the portrait canvas to the display height, exposes the version, and packages all skills", async () => {
   const [appSource, styles, packageSource, indexSource, viteSource] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
@@ -263,12 +273,12 @@ test("V1.4.10 keeps one avatar camera baseline, fits the portrait canvas to the 
     readFile(new URL("../vite.config.mjs", import.meta.url), "utf8"),
   ]);
 
-  assert.match(packageSource, /"version": "1\.4\.10"/);
-  assert.match(packageSource, /"productName": "小安数字健康管理师 V1\.4\.10"/);
+  assert.match(packageSource, /"version": "1\.4\.13"/);
+  assert.match(packageSource, /"productName": "小安数字健康管理师 V1\.4\.13"/);
   assert.match(packageSource, /skills\/health-management-v1/);
   assert.match(packageSource, /skills\/health-management-multidomain-v2/);
   assert.match(packageSource, /skills\/health-management-adaptive-dialogue-v3/);
-  assert.match(indexSource, /<title>小安数字健康管理师 V1\.4\.10<\/title>/);
+  assert.match(indexSource, /<title>小安数字健康管理师 V1\.4\.13<\/title>/);
   assert.match(viteSource, /__APP_VERSION__/);
   assert.match(packageSource, /"artifactName": "XiaoAn-Health-Kiosk-\$\{version\}-\$\{arch\}\.\$\{ext\}"/);
   assert.match(appSource, /className="app-version"/);

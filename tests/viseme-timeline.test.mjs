@@ -4,7 +4,8 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const fs = require("node:fs");
-const { buildVisemeUnits, createAlignedVisemes, createTimedVisemes, initialViseme, splitTtsProgressText, vowelViseme, vowelVisemes } = require("../electron/viseme-timeline.cjs");
+const { buildVisemeUnits, createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, initialViseme, splitTtsProgressText, vowelViseme, vowelVisemes } = require("../electron/viseme-timeline.cjs");
+const { extractNativeDurationAlignment, nativeDurationCapability } = require("../electron/vits-duration-contract.cjs");
 
 test("streamed PCM batches retain only their matching spoken clauses", () => {
   assert.deepEqual(
@@ -152,4 +153,26 @@ test("SenseVoice timing is remapped onto the requested text after a recognition 
   const finalCharacters = events.filter((event) => event.role === "final").map((event) => event.character);
   assert.deepEqual([...new Set(finalCharacters)], ["的", "经", "验", "推", "动"]);
   assert.ok(events.every((event, index) => index === 0 || event.timeMs > events[index - 1].timeMs));
+});
+
+test("VITS native phoneme durations take precedence when a compatible binding exposes them", () => {
+  const generated = {
+    sampleRate: 16000,
+    phonemes: ["ㄅ", "ㄚ", "ˉ", "ㄓ", "ㄧ"],
+    phonemeDurations: [4, 12, 2, 5, 10],
+    frameShiftMs: 10,
+  };
+  const alignment = extractNativeDurationAlignment(generated);
+  assert.equal(alignment.provider, "vits-native-phoneme-durations");
+  assert.equal(nativeDurationCapability(generated).status, "available");
+  const samples = new Float32Array(5280);
+  samples.fill(0.1);
+  const events = createNativeDurationVisemes("八知", new Map(), samples, 16000, alignment);
+  assert.deepEqual(events.map((event) => event.shape), ["CLOSED", "A", "SH", "E", "CLOSED"]);
+  assert.ok(events.every((event, index) => index === 0 || event.timeMs > events[index - 1].timeMs));
+});
+
+test("current sherpa output without duration fields reports an explicit fallback state", () => {
+  assert.equal(extractNativeDurationAlignment({ samples: new Float32Array(10), sampleRate: 16000 }), null);
+  assert.equal(nativeDurationCapability({ samples: [] }).status, "upstream-api-unavailable");
 });

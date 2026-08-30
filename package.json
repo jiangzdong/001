@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安数字健康管理师 V1.4.10",
-  "version": "1.4.10",
+  "productName": "小安数字健康管理师 V1.4.13",
+  "version": "1.4.13",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -11,11 +11,15 @@
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:skills": "node --test tests/skills.test.mjs",
-    "test:desktop": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/speech-service.cjs && node --check electron/speech-worker.cjs && node --check electron/avatar-service.cjs && node --check electron/frame-stream.cjs && node --check electron/deepseek-client.cjs && node --check electron/soak-monitor.cjs",
+    "test:desktop": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/speech-service.cjs && node --check electron/speech-worker.cjs && node --check electron/vits-duration-contract.cjs && node --check electron/avatar-service.cjs && node --check electron/frame-stream.cjs && node --check electron/deepseek-client.cjs && node --check electron/soak-monitor.cjs",
     "test:speech": "node scripts/test-open-source-speech.cjs",
     "test:packaged-speech": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/test-packaged-speech.cjs",
     "test:visemes": "node scripts/test-visemes.cjs",
     "test:viseme-alignment": "node scripts/audit-viseme-alignment.cjs",
+    "audit:vits-durations": "node scripts/audit-vits-duration-capability.cjs",
+    "mfa:setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-mfa-aligner.ps1",
+    "mfa:align": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-mfa-alignment.ps1",
+    "mfa:audit": "node scripts/audit-mfa-viseme-alignment.cjs",
     "audit:size": "node scripts/audit-package-size.cjs",
     "test:desktop-assets": "node --test tests/desktop-assets.test.mjs",
     "test:avatar": "node --test tests/avatar-service.test.mjs",
@@ -50,7 +54,7 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安数字健康管理师 V1.4.10",
+    "productName": "小安数字健康管理师 V1.4.13",
     "asar": true,
     "directories": {
       "output": "release"

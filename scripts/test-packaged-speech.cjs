@@ -2,7 +2,9 @@ const { Worker } = require("worker_threads");
 const fs = require("fs");
 const path = require("path");
 
-const resources = path.join(__dirname, "..", "release", "win-unpacked", "resources");
+const resources = process.env.XIAOAN_PACKAGED_RESOURCES
+  ? path.resolve(process.env.XIAOAN_PACKAGED_RESOURCES)
+  : path.join(__dirname, "..", "release", "win-unpacked", "resources");
 const appAsar = path.join(resources, "app.asar");
 const worker = new Worker(path.join(appAsar, "electron", "speech-worker.cjs"), { workerData: { modelsRoot: path.join(resources, "models") } });
 let sequence = 0;

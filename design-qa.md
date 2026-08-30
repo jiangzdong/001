@@ -1,5 +1,29 @@
 # Design QA
 
+## 2026-08-31 V1.4.13 单嘴连续过渡与自然眨眼恢复
+
+- Design Read: 保留医疗终端现有人物、机位、5:8 居中画布、适老信息架构与克制可信感，只修复自然眨眼可见性并降低说话口型的逐帧跳变。Taste 参数为 `DESIGN_VARIANCE: 1`、`MOTION_INTENSITY: 2`、`VISUAL_DENSITY: 1`。
+- 保留: VITS 原生时长优先、SenseVoice 时间戳兜底、PCM 音频时钟、每帧唯一满不透明摄影嘴型，以及互相独立的 Viseme/Blink/Expression 图层。
+- 增强: 时间戳口型的开度以音素轮廓为主，PCM 能量仅做 22% 范围的轻微强调；下颌开度保底随连续音素轮廓衰减，不再因 `CLOSED` 标签中点切换而突然撤销。
+- 删除: 删除误落在 reduced-motion 媒体查询外、导致眨眼图层全局 `display:none` 的规则；删除时间戳元音随 PCM 波谷反复塌陷的强耦合。
+- 重做: 严格 Electron 验收增加眨眼图层 `display` 与 `visibility` 检查，隐藏的半闭/全闭帧不能再被自动化误判为通过。
+- 验收状态: 已撤销会把嘴部遮罩扩展到右脸的 ROI 宽高缩放实验；Node 正式测试 134/134、Vite 4580 模块生产构建通过。`qa/strict-avatar-v1.4.13-r3/report.json` 在打包 Electron 自然 TTS 下为 PASS，覆盖 CLOSED/A/E/O/U、smile/concern/encourage、blink entry/closed/exit；嘴型重叠、错帧、软帧、左右网格边缘、隐藏眨眼样本均为 0。上半身复验的下颌最大步长为 0.081、左右差为 0、鼻/颈/脸颊平移均为 0；该报告仅因一次表情采样间隔产生的 0.091 非口型离群值未获全项 PASS，不作为口型完成证据。打包语音自检为 1.47 秒、RMS 0.0500、峰值 0.2942，确认音频非静音。
+- 成品: `release/XiaoAn-Health-Kiosk-1.4.13-x64.exe`，452,179,739 bytes（431.23 MiB），SHA-256 `07CDBA5BD1C594E6AB35B01AE3EC7D01A52DD7767D58A25D6B0CC9D08B4FADBE`。
+
+## 2026-08-30 V1.4.12 本地音素时长契约、连续下颌形变与 MFA 标定
+
+- Design Read: 这是面向 60 岁以上用户的 9:16 健康自助终端，保留现有可信、克制的肖像与页面结构，只对“讲话时的嘴部连续性和对齐精度”做定向进化。Taste 参数为 `DESIGN_VARIANCE: 3`、`MOTION_INTENSITY: 3`、`VISUAL_DENSITY: 4`。
+- 保留: 现有 9:16 信息架构、人物身份与机位、适老按钮、默认本机女声、可打断 Web Audio、SenseVoice 字符时间戳、独立 Viseme/Blink/Expression 图层和慢 GPU 不接管实时回答的边界。
+- 增强: 下颌与下半脸使用随口腔开度连续变化的 drop/scale 形变；鼻子和人中保持在刚性主肖像，不随音节做局部升降。相邻 Viseme 在协同发音中点切换单张满不透明摄影嘴型，由连续下颌承担中间运动，避免两层嘴唇混合发糊。新增 `vits-native-phoneme-durations` 优先契约和运行时能力状态，兼容未来或定制 sherpa 绑定暴露的 token 时长。
+- 删除: 删除把加权 PCM 时间线冒充 VITS 原生时长的模糊状态；删除相邻摄影嘴型的透明度叠加；PCM 能量不能单独驱动下颌和脸颊，只保留极小肌肉强调，避免逐音节抖脸。
+- 重做: 对齐链路固定为 VITS 原生音素时长 → SenseVoice 字符时间戳 → weighted PCM fallback；MFA 以独立离线 QA 工具解析 phone tier，输出覆盖率、中位漂移与 P95 漂移，不进入 Electron 终端运行时。
+- 自动化: 桌面模块语法检查通过；Node 全量测试 128/128，其中包含原生时长兼容契约、明确降级状态、MFA JSON 映射与漂移门槛、单张清晰嘴型、鼻部刚性边界和连续下颌形变；Vite 4579 模块生产构建通过。
+- 界面实测: 打包运行态保持居中 5:8 竖屏容器，左右/上下安全区、圆角和阴影清晰，不再横向填满窗口；原首页信息层级、人物机位、适老按钮和 V1.4.12 标识保持不变。
+- 能力边界: 模型图检出 `/Ceil_output_0` 内部时长节点，但当前 `sherpa-onnx-node` 绑定未导出时长，能力审计状态为 `internal-only`；当前实际优先使用 SenseVoice 字符时间戳。当前机器未安装 conda/MFA，因此真实中文 WAV 的 MFA 运行结果仍待部署环境执行，现阶段仅验证了安装/对齐包装脚本和 JSON 审计器。
+- 打包动作验收: `qa/upper-body-motion-v1.4.12-visible-final2/report.json` 为 PASS；空闲横向范围 0.457 cqw、倾斜范围 0.385°、呼吸缩放范围 0.002；讲话下颌位移范围 0.438 cqw、纵向形变范围 0.00906、嘴—下颌关联度 0.835，4 次自然眨眼内姿态漂移均为 0。
+- 打包口型验收: `qa/strict-avatar-v1.4.12-visible-final2/report.json` 为 PASS；覆盖 CLOSED/A/E/O/U、smile/concern/encourage、entry/closed/exit；口型重叠、错帧和半透明嘴型样本均为 0。打包 ASR 与本地 TTS 自检通过，TTS 1.66 秒、RMS 0.0519、峰值 0.4106。
+- 成品: `release/XiaoAn-Health-Kiosk-1.4.12-x64.exe`，452,208,264 bytes（431.26 MiB），SHA-256 `7B5F8D722DAAE10C896D709C705BF6DE71A0B86EF50F2E0E8F47EEF346D98BB6`。
+
 ## 2026-08-30 V1.4.10 上半身微动、唇形时序与面部连续性
 
 - Design Read: 保持 9:16 医疗健康触屏终端的原人物、机位、页面结构、按钮语义和可信克制感；本轮只增强真实人的低频头身重心变化、呼吸、说话点头与面部连续性，不改变业务布局。Taste 参数为 `DESIGN_VARIANCE: 3`、`MOTION_INTENSITY: 4`、`VISUAL_DENSITY: 5`。

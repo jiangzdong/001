@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const cdpUrl = process.env.XIAOAN_CDP_URL || "http://127.0.0.1:9229";
-const outputDir = path.resolve(process.env.XIAOAN_QA_DIR || "qa/strict-avatar-v1.4.10-source");
+const outputDir = path.resolve(process.env.XIAOAN_QA_DIR || "qa/strict-avatar-v1.4.13-source");
 const referenceText = "阿姨微笑着说，啊，诶，哦，乌，我会服务好每一位用户。";
 await fs.mkdir(outputDir, { recursive: true });
 
@@ -111,6 +111,45 @@ async function readScreencastMarker(frameData) {
   })()`);
 }
 
+async function measureMouthGridEdges(referenceFrameData, targetFrameData, clip, scale = 2) {
+  return evaluate(`(async () => {
+    const load = async (data) => {
+      const image = new Image();
+      image.src = ${JSON.stringify("data:image/jpeg;base64,")} + data;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(${clip.width} * ${scale}));
+      canvas.height = Math.max(1, Math.round(${clip.height} * ${scale}));
+      const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+      const ratioX = image.naturalWidth / innerWidth;
+      const ratioY = image.naturalHeight / innerHeight;
+      context.drawImage(image, ${clip.x} * ratioX, ${clip.y} * ratioY, ${clip.width} * ratioX, ${clip.height} * ratioY, 0, 0, canvas.width, canvas.height);
+      return { width: canvas.width, height: canvas.height, pixels: context.getImageData(0, 0, canvas.width, canvas.height).data };
+    };
+    const reference = await load(${JSON.stringify(referenceFrameData)});
+    const target = await load(${JSON.stringify(targetFrameData)});
+    const leftX = Math.round(reference.width * ((.392 - .37) / .26));
+    const rightX = Math.round(reference.width * ((.608 - .37) / .26));
+    const topY = Math.round(reference.height * ((.492 - .43) / .2));
+    const bottomY = Math.min(reference.height, Math.round(reference.height * ((.618 - .43) / .2)));
+    const meanDelta = (centerX) => {
+      let sum = 0;
+      let count = 0;
+      for (let y = topY; y < bottomY; y += 1) {
+        for (let x = Math.max(0, centerX - 2); x <= Math.min(reference.width - 1, centerX + 2); x += 1) {
+          const offset = (y * reference.width + x) * 4;
+          sum += (Math.abs(target.pixels[offset] - reference.pixels[offset])
+            + Math.abs(target.pixels[offset + 1] - reference.pixels[offset + 1])
+            + Math.abs(target.pixels[offset + 2] - reference.pixels[offset + 2])) / 3;
+          count += 1;
+        }
+      }
+      return count ? sum / count : 0;
+    };
+    return { left: meanDelta(leftX), right: meanDelta(rightX) };
+  })()`);
+}
+
 function blinkPhaseFromMarker([red = 0, green = 0, blue = 0] = []) {
   if (red > 130 && red > green * 1.5 && red > blue * 1.5) return "entry";
   if (green > 130 && green > red * 1.5 && green > blue * 1.5) return "closed";
@@ -178,6 +217,23 @@ report.initial = await evaluate(`(async () => {
 })()`);
 await capture("00-initial-window.png");
 
+await clickSelector('[aria-controls="avatar-settings-dialog"]');
+await wait(180);
+report.settings = await evaluate(`(() => {
+  const dialog = document.querySelector('#avatar-settings-dialog');
+  const options = [...document.querySelectorAll('.avatar-mode-option')];
+  return {
+    visible: Boolean(dialog),
+    localSelected: options.some((option) => option.textContent.includes('本地') && option.getAttribute('aria-checked') === 'true'),
+    cloudReserved: options.some((option) => option.textContent.includes('云GPU') && option.disabled && option.textContent.includes('后续接入')),
+    labels: options.map((option) => option.textContent.replace(/\s+/g, ' ').trim()),
+  };
+})()`);
+report.settings.screenshot = await capture("01-avatar-settings.png");
+if (!report.settings.visible || !report.settings.localSelected || !report.settings.cloudReserved) report.failures.push("avatar-settings-contract");
+await clickSelector("#avatar-settings-dialog .secondary-action");
+await wait(180);
+
 const shell = report.initial.shellRect;
 const viewport = report.initial.viewport;
 if (!shell || shell.x < -0.5 || shell.y < -0.5 || shell.x + shell.width > viewport.width + 0.5 || shell.y + shell.height > viewport.height + 0.5) report.failures.push("shell-clipped");
@@ -187,7 +243,7 @@ const regions = await evaluate(`(() => {
   const rect = document.querySelector('.digital-human')?.getBoundingClientRect();
   if (!rect) return null;
   return {
-    mouth: { x: rect.x + rect.width * .39, y: rect.y + rect.width * .435, width: rect.width * .22, height: rect.width * .14 },
+    mouth: { x: rect.x + rect.width * .37, y: rect.y + rect.width * .43, width: rect.width * .26, height: rect.width * .2 },
     eyes: { x: rect.x + rect.width * .34, y: rect.y + rect.width * .34, width: rect.width * .32, height: rect.width * .16 },
     head: { x: rect.x + rect.width * .26, y: rect.y + rect.width * .18, width: rect.width * .48, height: rect.width * .52 },
   };
@@ -259,11 +315,19 @@ let sawSpeaking = false;
 let sawTalkScreen = false;
 let overlapSamples = 0;
 let wrongFrameSamples = 0;
+let softFrameSamples = 0;
+let legacyMouthNodeSamples = 0;
+let rootTransformSamples = 0;
+let maximumChinOffsetPx = 0;
+let maximumMouthChinDistanceDeltaPx = 0;
+let maximumCheekTranslation = 0;
 let lastState = null;
 
 while (performance.now() < mouthDeadline) {
   const state = await evaluate(`(() => {
     const avatar = document.querySelector('.digital-human');
+    const localRig = document.querySelector('.digital-human__local-rig');
+    const localRigStyle = localRig ? getComputedStyle(localRig) : null;
     const frames = [...document.querySelectorAll('.digital-human__mouth-frame')];
     const expressionFrames = [...document.querySelectorAll('.digital-human__expression-frame')];
     const activeExpressionFrames = expressionFrames.filter((frame) => Number(getComputedStyle(frame).opacity) > .3 && getComputedStyle(frame).visibility !== 'hidden');
@@ -274,6 +338,24 @@ while (performance.now() < mouthDeadline) {
       expression: avatar?.dataset.expression || '',
       capturedAtEpochMs: Date.now(),
       hasReadyVideo: avatar?.classList.contains('has-ready-video') || false,
+      avatarTransform: avatar ? getComputedStyle(avatar).transform : '',
+      avatarMode: avatar?.dataset.avatarMode || '',
+      localRig: localRig ? {
+        visible: localRigStyle.visibility !== 'hidden' && Number(localRigStyle.opacity) > .5,
+        rig: localRig.dataset.rig || '',
+        viseme: localRig.dataset.viseme || '',
+        jawOpen: Number(localRig.dataset.jawOpen || 0),
+        lowerLeft: Number(localRig.dataset.lowerLeft || 0),
+        lowerRight: Number(localRig.dataset.lowerRight || 0),
+        noseTranslation: Number(localRig.dataset.noseTranslation || 0),
+        neckLeft: Number(localRig.dataset.neckLeft || 0),
+        neckRight: Number(localRig.dataset.neckRight || 0),
+        cheekLeft: Number(localRig.dataset.cheekLeft || 0),
+        cheekRight: Number(localRig.dataset.cheekRight || 0),
+        lowerLipOffsetPx: Number(localRig.dataset.lowerLipOffsetPx || 0),
+        chinOffsetPx: Number(localRig.dataset.chinOffsetPx || 0),
+        mouthChinDistanceDeltaPx: Number(localRig.dataset.mouthChinDistanceDeltaPx || 0),
+      } : null,
       expressionFrames: activeExpressionFrames.map((frame) => ({ className: frame.className, opacity: Number(getComputedStyle(frame).opacity), visibility: getComputedStyle(frame).visibility })),
       frames: frames.map((frame) => ({ className: frame.className, opacity: Number(getComputedStyle(frame).opacity), visibility: getComputedStyle(frame).visibility })),
     };
@@ -292,10 +374,23 @@ while (performance.now() < mouthDeadline) {
   }
   if (state.speaking && !state.hasReadyVideo) {
     sawSpeaking = true;
+    if (state.frames.length) legacyMouthNodeSamples += 1;
+    if (state.avatarTransform !== "none") rootTransformSamples += 1;
+    maximumChinOffsetPx = Math.max(maximumChinOffsetPx, Math.abs(state.localRig?.chinOffsetPx || 0));
+    maximumMouthChinDistanceDeltaPx = Math.max(maximumMouthChinDistanceDeltaPx, Math.abs(state.localRig?.mouthChinDistanceDeltaPx || 0));
+    maximumCheekTranslation = Math.max(maximumCheekTranslation, Math.abs(state.localRig?.cheekLeft || 0), Math.abs(state.localRig?.cheekRight || 0));
     const activeFrames = state.frames.filter((frame) => frame.opacity > 0.5 && frame.visibility !== "hidden");
-    const expectedSuffix = state.viseme === "CLOSED" ? "" : `--${state.viseme.toLowerCase()}`;
+    const softFrames = state.frames.filter((frame) => frame.opacity > 0.02 && frame.opacity < 0.98 && frame.visibility !== "hidden");
     if (activeFrames.length > 1) overlapSamples += 1;
-    if ((state.viseme === "CLOSED" && activeFrames.length !== 0) || (state.viseme !== "CLOSED" && (activeFrames.length !== 1 || !activeFrames[0].className.includes(expectedSuffix)))) wrongFrameSamples += 1;
+    if (softFrames.length) softFrameSamples += 1;
+    const localRigMatches = state.avatarMode === "local"
+      && state.localRig?.visible
+      && state.localRig.rig === "local-mouth-chin-v2"
+      && state.localRig.viseme === state.viseme
+      && Math.abs(state.localRig.lowerLeft - state.localRig.lowerRight) <= .002
+      && Math.abs(state.localRig.noseTranslation) <= .0001
+      && Math.max(Math.abs(state.localRig.neckLeft), Math.abs(state.localRig.neckRight)) <= .0001;
+    if (activeFrames.length !== 0 || !localRigMatches) wrongFrameSamples += 1;
     if (state.viseme) observed.add(state.viseme);
     if (naturalVisemeTimes[state.viseme]) naturalVisemeTimes[state.viseme].push(state.capturedAtEpochMs);
   }
@@ -306,11 +401,17 @@ await send("Page.stopScreencast");
 await wait(80);
 
 report.observedVisemes = [...observed];
-report.mouth = { sawTalkScreen, sawSpeaking, overlapSamples, wrongFrameSamples, finalState: lastState };
+report.mouth = { sawTalkScreen, sawSpeaking, overlapSamples, wrongFrameSamples, softFrameSamples, legacyMouthNodeSamples, rootTransformSamples, maximumChinOffsetPx, maximumMouthChinDistanceDeltaPx, maximumCheekTranslation, finalState: lastState };
 if (!sawTalkScreen) report.failures.push("talk-navigation-failed");
 if (!sawSpeaking) report.failures.push("natural-local-tts-not-observed");
 if (overlapSamples) report.failures.push(`mouth-overlap:${overlapSamples}`);
 if (wrongFrameSamples) report.failures.push(`mouth-frame-mismatch:${wrongFrameSamples}`);
+if (softFrameSamples) report.failures.push(`mouth-soft-alpha-blend:${softFrameSamples}`);
+if (legacyMouthNodeSamples) report.failures.push(`legacy-mouth-nodes:${legacyMouthNodeSamples}`);
+if (rootTransformSamples) report.failures.push(`root-face-transform:${rootTransformSamples}`);
+if (maximumChinOffsetPx < 2.5) report.failures.push(`chin-motion-missing:${maximumChinOffsetPx.toFixed(3)}`);
+if (maximumMouthChinDistanceDeltaPx > .45) report.failures.push(`mouth-chin-distance-drift:${maximumMouthChinDistanceDeltaPx.toFixed(3)}`);
+if (maximumCheekTranslation > .0001) report.failures.push(`cheek-translation:${maximumCheekTranslation.toFixed(4)}`);
 if (await evaluate(`Boolean(document.querySelector('#voice-settings-dialog'))`)) {
   await clickSelector("#voice-settings-dialog .primary-action");
   await wait(200);
@@ -326,6 +427,7 @@ for (const targetShape of ["CLOSED", "A", "E", "O", "U"]) {
   }
 }
 const markedMouthFrames = [];
+const selectedMouthFrameData = {};
 for (const frame of mouthFrameCandidates) {
   const markerRgb = await readScreencastMarker(frame.data);
   const viseme = visemeFromMarker(markerRgb);
@@ -340,6 +442,7 @@ for (const targetShape of ["CLOSED", "A", "E", "O", "U"]) {
     continue;
   }
   const screenshot = await cropScreencastFrame(`mouth-${targetShape.toLowerCase()}.png`, match.frame.data, regions.mouth, 2);
+  selectedMouthFrameData[targetShape] = match.frame.data;
   report.visemeSamples[targetShape] = {
     screenshot,
     captureMode: "non-blocking-natural-screencast-state-marker",
@@ -353,6 +456,17 @@ await evaluate(`window.__XIAOAN_VISEME_MARKER_CLEANUP__?.(); true`);
 for (const required of ["CLOSED", "A", "E", "O", "U"]) {
   if (!report.visemeSamples[required]?.screenshot) report.failures.push(`natural-viseme-missing:${required}`);
 }
+report.mouthGridEdges = {};
+if (selectedMouthFrameData.CLOSED) {
+  for (const shape of ["A", "E", "O", "U"]) {
+    if (selectedMouthFrameData[shape]) report.mouthGridEdges[shape] = await measureMouthGridEdges(selectedMouthFrameData.CLOSED, selectedMouthFrameData[shape], regions.mouth, 2);
+  }
+}
+const leftGridEdgeMaximum = Math.max(0, ...Object.values(report.mouthGridEdges).map((sample) => sample.left));
+const rightGridEdgeMaximum = Math.max(0, ...Object.values(report.mouthGridEdges).map((sample) => sample.right));
+report.mouthGridEdgeMaximums = { left: leftGridEdgeMaximum, right: rightGridEdgeMaximum };
+if (leftGridEdgeMaximum > .34) report.failures.push(`mouth-left-grid-edge:${leftGridEdgeMaximum.toFixed(3)}`);
+if (rightGridEdgeMaximum > .16) report.failures.push(`mouth-right-grid-edge:${rightGridEdgeMaximum.toFixed(3)}`);
 report.observedVisemes = [...new Set([...report.observedVisemes, ...Object.keys(report.visemeSamples).filter((shape) => ["CLOSED", "A", "E", "O", "U"].includes(shape))])];
 if (await evaluate(`Boolean(document.querySelector('#voice-settings-dialog'))`)) {
   await clickSelector("#voice-settings-dialog .primary-action");
@@ -401,6 +515,7 @@ let completedBlinkCycles = 0;
 const naturalBlinkTimes = { entry: [], closed: [], exit: [] };
 let blinkOverlapSamples = 0;
 let blinkFrameMismatchSamples = 0;
+let blinkHiddenSamples = 0;
 await evaluate(`(() => {
   window.__XIAOAN_BLINK_MARKER_CLEANUP__?.();
   const avatar = document.querySelector('.digital-human');
@@ -431,7 +546,7 @@ while (performance.now() < blinkDeadline) {
   const state = await evaluate(`(() => {
     const avatar = document.querySelector('.digital-human');
     const progress = Number(getComputedStyle(avatar).getPropertyValue('--blink-progress')) || 0;
-      const blinkFrames = [...document.querySelectorAll('.digital-human__blink-frame')].map((frame) => ({ className: frame.className, opacity: Number(getComputedStyle(frame).opacity) }));
+      const blinkFrames = [...document.querySelectorAll('.digital-human__blink-frame')].map((frame) => { const style = getComputedStyle(frame); return { className: frame.className, opacity: Number(style.opacity), display: style.display, visibility: style.visibility }; });
       const expressionFrames = [...document.querySelectorAll('.digital-human__expression-frame')].map((frame) => ({ className: frame.className, opacity: Number(getComputedStyle(frame).opacity), visibility: getComputedStyle(frame).visibility }));
     return { progress, phase: avatar?.dataset.blinkPhase || '', expression: avatar?.dataset.expression || '', semanticExpression: avatar?.dataset.semanticExpression || 'neutral', capturedAtEpochMs: Date.now(), blinkFrames, expressionFrames };
   })()`);
@@ -445,7 +560,8 @@ while (performance.now() < blinkDeadline) {
   else if (state.phase === "half") phase = cycleSawClosed ? "exit" : "entry";
   if (phase) naturalBlinkTimes[phase].push(state.capturedAtEpochMs);
   if (state.expression === "blink") {
-    const activeBlinkFrames = state.blinkFrames.filter((frame) => frame.opacity > .5);
+    const activeBlinkFrames = state.blinkFrames.filter((frame) => frame.opacity > .5 && frame.display !== "none" && frame.visibility !== "hidden");
+    if (state.blinkFrames.some((frame) => frame.opacity > .5 && (frame.display === "none" || frame.visibility === "hidden"))) blinkHiddenSamples += 1;
     const visibleExpressionFrames = state.expressionFrames.filter((frame) => frame.visibility !== "hidden" && frame.opacity > 0.02);
     const expectsSemanticFrame = ["smile", "concern", "encourage", "listening"].includes(state.semanticExpression);
     const semanticFrameMatches = !expectsSemanticFrame || (visibleExpressionFrames.length === 1 && visibleExpressionFrames[0].className.includes(`--${state.semanticExpression}`));
@@ -482,8 +598,9 @@ for (const phase of ["entry", "closed", "exit"]) {
   };
 }
 await evaluate(`window.__XIAOAN_BLINK_MARKER_CLEANUP__?.(); true`);
-report.blink = { overlapSamples: blinkOverlapSamples, frameMismatchSamples: blinkFrameMismatchSamples };
+report.blink = { overlapSamples: blinkOverlapSamples, frameMismatchSamples: blinkFrameMismatchSamples, hiddenSamples: blinkHiddenSamples };
 if (blinkOverlapSamples) report.failures.push(`blink-layer-overlap:${blinkOverlapSamples}`);
+if (blinkHiddenSamples) report.failures.push(`blink-hidden:${blinkHiddenSamples}`);
 if (blinkFrameMismatchSamples) report.failures.push(`blink-frame-mismatch:${blinkFrameMismatchSamples}`);
 for (const phase of ["entry", "closed", "exit"]) if (!report.blinkSamples[phase]) report.failures.push(`natural-blink-${phase}-missing`);
 

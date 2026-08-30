@@ -47,7 +47,7 @@ function synthesize(payload) {
 (async () => {
   fs.mkdirSync(outputDir, { recursive: true });
   fs.copyFileSync(
-    path.join(root, "public", "assets", "xiaoa-real-v2.png"),
+    path.join(root, "public", "assets", "xiaoa-ditto-master-v1.0.3.png"),
     path.join(outputDir, "xiaoa-source.png"),
   );
   const text = "您好，我是小安，您的数字健康管理师。接下来我会用几个简单的问题，帮助您了解最近的健康状态。";

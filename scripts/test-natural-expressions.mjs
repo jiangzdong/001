@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const cdpUrl = process.env.XIAOAN_CDP_URL || "http://127.0.0.1:9248";
-const outputDir = path.resolve(process.env.XIAOAN_QA_DIR || "qa/natural-expressions-v1.4.10");
+const outputDir = path.resolve(process.env.XIAOAN_QA_DIR || "qa/natural-expressions-v1.4.13");
 const requestedExpression = String(process.env.XIAOAN_EXPRESSION || "").trim();
 await fs.mkdir(outputDir, { recursive: true });
 

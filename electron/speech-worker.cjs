@@ -2,7 +2,8 @@ const { parentPort, workerData } = require("worker_threads");
 const fs = require("fs");
 const path = require("path");
 const sherpa = require("sherpa-onnx-node");
-const { createAlignedVisemes, createTimedVisemes, splitTtsProgressText } = require("./viseme-timeline.cjs");
+const { createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, splitTtsProgressText } = require("./viseme-timeline.cjs");
+const { extractNativeDurationAlignment } = require("./vits-duration-contract.cjs");
 
 const senseVoiceDir = path.join(workerData.modelsRoot, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
 const zhLlDir = path.join(workerData.modelsRoot, "sherpa-onnx-vits-zh-ll");
@@ -25,8 +26,30 @@ function getPronunciations(modelId = "zh-ll") {
   return pronunciations;
 }
 
-function createVisemeSequence(text, modelId, samples, sampleRate, options) {
-  return createTimedVisemes(text, getPronunciations(modelId), samples, sampleRate, options);
+function createVisemeSequence(text, modelId, samples, sampleRate, generated, options) {
+  const nativeAlignment = extractNativeDurationAlignment(generated, sampleRate);
+  if (nativeAlignment) {
+    const visemes = createNativeDurationVisemes(text, getPronunciations(modelId), samples, sampleRate, nativeAlignment);
+    if (visemes.length > 1) {
+      return {
+        visemes,
+        alignment: {
+          provider: nativeAlignment.provider,
+          durationCount: nativeAlignment.durationCount,
+          nativeDurationStatus: "available",
+        },
+      };
+    }
+  }
+  return {
+    visemes: createTimedVisemes(text, getPronunciations(modelId), samples, sampleRate, options),
+    alignment: {
+      provider: "weighted-pcm-fallback",
+      tokenCount: 0,
+      timestampCount: 0,
+      nativeDurationStatus: "upstream-api-unavailable",
+    },
+  };
 }
 
 function getRecognizer() {
@@ -101,15 +124,12 @@ async function synthesize(text, speed, modelId, sid) {
     enableExternalBuffer: false,
     generationConfig,
   });
+  const timeline = createVisemeSequence(text, safeModelId, audio.samples, audio.sampleRate, audio);
   return {
     samples: audio.samples,
     sampleRate: audio.sampleRate,
-    visemes: createVisemeSequence(text, safeModelId, audio.samples, audio.sampleRate),
-    alignment: {
-      provider: "weighted-pcm-fallback",
-      tokenCount: 0,
-      timestampCount: 0,
-    },
+    visemes: timeline.visemes,
+    alignment: timeline.alignment,
   };
 }
 
@@ -143,15 +163,15 @@ async function synthesizeStream(id, text, speed, modelId, sid, turnId) {
       offset += part.length;
     }
     const chunkText = pendingTexts.join("") || text;
-    const visemes = createVisemeSequence(chunkText, safeModelId, samples, engine.sampleRate, { includeInitialClosure: emittedChunkIndex === 0 });
+    const timeline = createVisemeSequence(chunkText, safeModelId, samples, engine.sampleRate, null, { includeInitialClosure: emittedChunkIndex === 0 });
     parentPort.postMessage({
       id,
       event: "chunk",
       result: {
         samples,
         sampleRate: engine.sampleRate,
-        visemes,
-        alignment: { provider: "weighted-pcm-fallback", tokenCount: 0, timestampCount: 0 },
+        visemes: timeline.visemes,
+        alignment: timeline.alignment,
         chunkIndex: emittedChunkIndex,
         progress: pendingProgress,
         generatedAtMs: performance.now() - startedAt,

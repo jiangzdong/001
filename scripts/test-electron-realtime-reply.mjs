@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const cdpUrl = process.env.XIAOAN_CDP_URL || "http://127.0.0.1:9228";
-const screenshotPath = path.resolve(process.env.XIAOAN_REALTIME_SCREENSHOT || "qa-v1.4.10-realtime-gpu-handoff.png");
+const screenshotPath = path.resolve(process.env.XIAOAN_REALTIME_SCREENSHOT || "qa-v1.4.13-realtime-gpu-handoff.png");
 const targets = await fetch(`${cdpUrl}/json/list`).then((response) => response.json());
 const target = targets.find((item) => item.type === "page" && /小安数字健康管理师/.test(item.title));
 if (!target?.webSocketDebuggerUrl) throw new Error("没有找到小安 Electron 页面");

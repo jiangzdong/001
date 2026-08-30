@@ -173,7 +173,15 @@ function createSpeechService({ app }) {
           });
           if (turnId && cancelledTurns.has(turnId)) return;
           const output = refined?.ok
-            ? { ...chunk, visemes: refined.visemes, alignment: refined.alignment }
+            ? {
+                ...chunk,
+                visemes: refined.visemes,
+                alignment: {
+                  ...chunk.alignment,
+                  ...refined.alignment,
+                  nativeDurationStatus: chunk.alignment?.nativeDurationStatus || "upstream-api-unavailable",
+                },
+              }
             : chunk;
           if (firstChunkMs == null) firstChunkMs = performance.now() - startedAt;
           onChunk?.(output);

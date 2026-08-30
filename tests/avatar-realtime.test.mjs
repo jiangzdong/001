@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { advanceVisemeBlend, blendVisemeProfiles, createBlinkProfile, createSpeechProsodyTimeline, inferSpeechMood, nextBlinkDelay, sampleBlinkEnvelope, sampleExpressionStrength, sampleSpeechProsody, sampleUpperBodyPose, sampleVisemeTimeline, shouldUseAuthenticAvatar, smoothingAlpha, stabilizeVisemeLabel, updateVisemeGate } from "../src/avatarMotion.js";
+import { advanceVisemeBlend, blendVisemeProfiles, createBlinkProfile, createSpeechProsodyTimeline, inferSpeechMood, nextBlinkDelay, sampleBlinkEnvelope, sampleExpressionStrength, sampleJawPose, sampleMouthAperture, sampleSpeechProsody, sampleUpperBodyPose, sampleVisemeTimeline, shouldUseAuthenticAvatar, smoothingAlpha, stabilizeVisemeLabel, updateVisemeGate } from "../src/avatarMotion.js";
 
 test("normal symptom replies use the authentic avatar while safety messages stay immediate", () => {
   assert.equal(shouldUseAuthenticAvatar({ handled: true, type: "question", safetySignal: null }), true);
@@ -90,6 +90,17 @@ test("time-based mouth smoothing is stable at different frame rates", () => {
   assert.ok(smoothingAlpha(1000, 80) < 0.64, "a delayed frame must not snap the mouth fully open");
 });
 
+test("timestamped mouth aperture survives PCM valleys while fallback remains energy reactive", () => {
+  const quietAligned = sampleMouthAperture({ profileOpen: 0.8, energy: 0, timelineDriven: true, speaking: true });
+  const loudAligned = sampleMouthAperture({ profileOpen: 0.8, energy: 1, timelineDriven: true, speaking: true });
+  assert.ok(quietAligned > 0.55, "an aligned vowel must not collapse during a waveform valley");
+  assert.ok(loudAligned - quietAligned < 0.2, "PCM energy must remain a restrained accent on aligned visemes");
+  const quietFallback = sampleMouthAperture({ profileOpen: 0.8, energy: 0, timelineDriven: false, speaking: true });
+  const loudFallback = sampleMouthAperture({ profileOpen: 0.8, energy: 1, timelineDriven: false, speaking: true });
+  assert.ok(loudFallback - quietFallback > 0.65, "non-timestamped fallback should still follow speech energy");
+  assert.equal(sampleMouthAperture({ profileOpen: 1, energy: 1, timelineDriven: true, speaking: false }), 0);
+});
+
 test("speech energy gate holds through short inter-syllable valleys", () => {
   let gate = updateVisemeGate(null, 0.12, 100, true);
   assert.equal(gate.open, true);
@@ -138,19 +149,33 @@ test("semantic expression eases in and stays below a rigid full-frame hold", () 
   assert.ok(loud - quiet < 0.025, "eyebrows must not pump with syllable energy");
 });
 
-test("upper body pose is visible, lower-torso anchored, and frame-continuous", () => {
+test("upper body pose keeps the neck quiet while chest breathing remains visible", () => {
   const samples = [];
   for (let elapsedMs = 0; elapsedMs <= 12_000; elapsedMs += 16) {
     samples.push(sampleUpperBodyPose({ elapsedMs, speaking: true, motion: 0.94, energy: 0.45 }));
   }
   const range = (key) => Math.max(...samples.map((sample) => sample[key])) - Math.min(...samples.map((sample) => sample[key]));
   const maxStep = (key) => Math.max(...samples.slice(1).map((sample, index) => Math.abs(sample[key] - samples[index][key])));
-  assert.ok(range("x") > 0.2 && range("x") < 0.5);
-  assert.ok(range("tilt") > 0.18 && range("tilt") < 0.4);
-  assert.ok(range("y") > 0.04 && range("y") < 0.12);
-  assert.ok(range("scale") > 0.001 && range("scale") < 0.002);
-  assert.ok(maxStep("x") < 0.002);
-  assert.ok(maxStep("tilt") < 0.002);
+  assert.equal(range("x"), 0);
+  assert.equal(range("tilt"), 0);
+  assert.equal(range("y"), 0, "both neck edges must remain rigid");
+  assert.equal(range("scale"), 0, "global portrait scale must not carry breathing");
+  assert.ok(range("chestRise") > 0.1 && range("chestRise") < 0.13);
+  assert.ok(range("chestScaleX") > 0.005 && range("chestScaleX") < 0.0061);
+  assert.ok(range("chestScaleY") > 0.003 && range("chestScaleY") < 0.0036);
+  assert.equal(maxStep("x"), 0);
+  assert.equal(maxStep("tilt"), 0);
+});
+
+test("jaw and lower-face deformation follows aperture without independent jitter", () => {
+  const closed = sampleJawPose({ mouthOpen: 0, energy: 1, speaking: false });
+  const rest = sampleJawPose({ mouthOpen: 0.18, energy: 0.3, speaking: true });
+  const open = sampleJawPose({ mouthOpen: 0.94, energy: 0.7, speaking: true });
+  assert.deepEqual(closed, { open: 0, drop: 0, scaleY: 1, scaleX: 1, cheek: 0 });
+  assert.ok(open.open > rest.open);
+  assert.equal(open.drop, 0);
+  assert.ok(open.scaleY > rest.scaleY && open.scaleY > 1.08 && open.scaleY < 1.11);
+  assert.equal(open.scaleX, 1);
 });
 
 test("viseme frames crossfade without exposing two dominant mouths", () => {
@@ -215,22 +240,32 @@ test("renderer keeps one continuous motion loop, protects speech callbacks, and 
   assert.match(speechWorker, /minimumChunkSamples = Math\.round\(engine\.sampleRate \* 0\.62\)[\s\S]*flushPendingChunk\(false\)[\s\S]*flushPendingChunk\(true\)/);
   assert.match(appSource, /dataset\.semanticExpression = displayedMood/);
   assert.match(appSource, /sampleExpressionStrength[\s\S]*--expression-strength/);
+  assert.match(appSource, /sampleJawPose[\s\S]*--jaw-drop[\s\S]*--jaw-scale-y/);
+  assert.match(appSource, /digital-human__local-rig/);
+  assert.doesNotMatch(appSource, /digital-human__mouth-frame/);
+  assert.doesNotMatch(styles, /digital-human__mouth-frame/);
+  assert.doesNotMatch(appSource, /digital-human__jaw-frame/);
   assert.match(appSource, /pendingFrame = event[\s\S]*pumpLatestFrame\(\)/);
   assert.match(appSource, /frameTimestampMs \+ 180 < playbackElapsedMs/);
   assert.doesNotMatch(appSource, /const bufferedFrames = frames\.splice\(0\)/);
   assert.match(appSource, /--blink-progress/);
-  assert.match(appSource, /xiaoa-blink-half-v4\.png/);
+  assert.match(appSource, /xiaoa-blink-half-v5\.png/);
   assert.match(appSource, /blinkStartedAt >= 0 && !blinkBodyPose[\s\S]*renderedBodyPose = blinkBodyPose/);
   assert.match(appSource, /timestamp - pendingMoodSince >= 180/);
   assert.match(appSource, /moodPoseAlpha = smoothingAlpha\(deltaMs, 460\)/);
-  assert.match(appSource, /sampleUpperBodyPose[\s\S]*--body-x[\s\S]*--body-tilt/);
-  assert.match(appSource, /advanceVisemeBlend[\s\S]*mouthFrameNodes[\s\S]*node\.style\.opacity/);
-  assert.match(appSource, /xiaoa-blink-closed-v2\.png/);
+  assert.match(appSource, /sampleUpperBodyPose[\s\S]*--body-x[\s\S]*--body-tilt[\s\S]*--chest-rise[\s\S]*--chest-scale-x/);
+  assert.doesNotMatch(appSource, /mouthFrameNodes|node\.style\.opacity/);
+  assert.match(appSource, /Photographic mouth sprites must never be alpha-blended[\s\S]*dominant = timelineMix < 0\.5 \? sample\.current : sample\.next[\s\S]*\{ \[dominant\]: 1 \}/);
+  assert.doesNotMatch(appSource, /outgoingWeight = 1 - timelineMix[\s\S]*incomingWeight = timelineMix/);
+  assert.match(appSource, /xiaoa-blink-closed-v3\.png/);
   assert.match(styles, /identity-locked blink frame[\s\S]*data-blink-phase="half"[\s\S]*data-blink-phase="closed"/);
+  assert.doesNotMatch(styles, /\.digital-human__blink-frame\s*\{\s*display:\s*none;/);
+  assert.match(styles, /data-expression="blink"\] \.digital-human__expression-frame \{ transition:none; \}/);
   assert.match(styles, /\.screen-welcome \.digital-human__expression-sprite,[\s\S]*\.screen-analyzing \.digital-human__expression-sprite \{\s*top: 24\.8cqw;/);
   assert.match(appSource, /setVideoSettling\(true\)[\s\S]*}, 320\)/);
-  assert.match(appSource, /\}, \[analyserRef, visemeTimelineRef\]\)/);
-  assert.match(styles, /V1\.0\.6:[\s\S]*--body-x[\s\S]*is-video-settling[\s\S]*opacity 320ms/);
+  assert.match(appSource, /\}, \[analyserRef, avatarMode, localRigReady, visemeTimelineRef\]\)/);
+  assert.match(styles, /V1\.0\.6:[\s\S]*transform: none;[\s\S]*is-video-settling[\s\S]*opacity 320ms/);
+  assert.doesNotMatch(styles, /45\.8cqw/);
 });
 
 test("avatar cache and encrypted provider configuration use a version-stable data path", async () => {

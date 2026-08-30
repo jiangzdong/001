@@ -104,25 +104,43 @@ export function sampleExpressionStrength({ mood = "neutral", speaking = false, e
   return clamp01((base * breath + energyLift) * easedOnset * punctuationEase);
 }
 
+export function sampleJawPose({ mouthOpen = 0, energy = 0, speaking = false } = {}) {
+  if (!speaking) return { open: 0, drop: 0, scaleY: 1, scaleX: 1, cheek: 0 };
+  const aperture = clamp01(mouthOpen);
+  // Adult speech coordinates the mandible with the lips instead of translating
+  // the whole lower face. Keep vowel aperture authoritative and reserve only a
+  // tiny PCM accent; the visible replacement is limited to lower lip and chin.
+  const open = clamp01(Math.pow(aperture, 0.9) * 0.84 + clamp01(energy) * 0.018);
+  return {
+    open,
+    // A single lower-face replacement stretches from a fixed upper-lip pivot.
+    // This preserves the prominent chin without stacking a second moving chin
+    // over the stationary portrait.
+    drop: 0,
+    scaleY: 1 + open * 0.11,
+    scaleX: 1,
+    cheek: open * 0.08,
+  };
+}
+
 export function sampleUpperBodyPose({ elapsedMs = 0, speaking = false, motion = 1, energy = 0, prosody = {}, moodTilt = 0, moodY = 0 } = {}) {
   const elapsed = Math.max(0, Number(elapsedMs) || 0);
   const amount = clamp01(motion);
-  const speechAmount = speaking ? 1 : 0;
-  const slowSway = Math.sin(elapsed * 0.00042 - 0.45);
-  const secondarySway = Math.sin(elapsed * 0.00073 + 1.7);
-  const breath = (Math.sin(elapsed * 0.00115 + 0.35) + 1) * 0.5;
-  const phraseNod = Math.max(-1, Math.min(1, Number(prosody?.nod) || 0));
-  const phraseTilt = Math.max(-1, Math.min(1, Number(prosody?.tilt) || 0));
-  const normalizedEnergy = clamp01(energy);
+  const breath = (Math.sin(elapsed * 0.00118 + 0.35) + 1) * 0.5;
+  const chestBreath = breath * breath * (3 - 2 * breath);
 
   return {
-    // Rotation is anchored at the lower torso in CSS. These deliberately small
-    // values move the head and shoulders while keeping the waist visually set.
-    x: (slowSway * 0.17 + secondarySway * 0.045) * amount,
-    y: Number(moodY) + (-0.055 * breath + 0.018 * secondarySway) * amount - phraseNod * 0.028 * speechAmount,
-    tilt: Number(moodTilt) + (slowSway * 0.145 + secondarySway * 0.035) * amount + phraseTilt * 0.045 * speechAmount,
-    scale: 1.001 + breath * 0.00145 * amount + normalizedEnergy * 0.00018 * speechAmount,
+    // Keep the source head, nose and both neck edges rigid. The prior whole-
+    // portrait sway made one photographed neck contour appear to jitter more
+    // than the other. Only the clavicle-below breathing layer moves now.
+    x: 0,
+    y: 0,
+    tilt: 0,
+    scale: 1,
     breath,
+    chestRise: -0.12 * chestBreath * amount,
+    chestScaleX: 1 + 0.006 * chestBreath * amount,
+    chestScaleY: 1 + 0.0035 * chestBreath * amount,
   };
 }
 
@@ -183,7 +201,10 @@ export function sampleVisemeTimeline(timeline, performanceNow = 0) {
     const currentTime = Number(visemes[low]?.timeMs) || 0;
     const nextTime = Number(visemes[Math.min(low + 1, visemes.length - 1)]?.timeMs) || currentTime;
     const eventSpan = Math.max(0, nextTime - currentTime);
-    const transitionMs = Math.min(112, Math.max(68, eventSpan * 0.5));
+    // Real lips spend roughly a tenth of a second coarticulating between
+    // neighboring sounds. A slightly wider window removes the card-flip look
+    // without shifting the character timestamp itself.
+    const transitionMs = Math.min(124, Math.max(78, eventSpan * 0.52));
     const transitionStart = Math.max(currentTime, nextTime - transitionMs);
     const rawMix = nextTime > transitionStart ? clamp01((clampedElapsed - transitionStart) / (nextTime - transitionStart)) : 0;
     const mix = rawMix * rawMix * (3 - 2 * rawMix);
@@ -211,6 +232,18 @@ export function blendVisemeProfiles(profiles, sample) {
     radius: mix < 0.5 ? current.radius : next.radius,
     label: sample?.discrete ? sample?.current || "REST" : mix < 0.5 ? sample?.current || "REST" : sample?.next || "REST",
   };
+}
+
+export function sampleMouthAperture({ profileOpen = 0, energy = 0, timelineDriven = false, speaking = false } = {}) {
+  if (!speaking) return 0;
+  const authoredOpen = clamp01(profileOpen);
+  const speechEnergy = clamp01(energy);
+  // Timestamped visemes already describe when the mouth should be open. PCM
+  // energy is only a restrained accent here; using it as the primary driver
+  // makes sustained vowels collapse and reopen at every waveform valley.
+  const base = timelineDriven ? 0.72 : 0.1;
+  const accent = timelineDriven ? 0.22 : 0.92;
+  return clamp01(authoredOpen * (base + speechEnergy * accent));
 }
 
 export function updateVisemeGate(state, level, timestamp, speaking = true) {

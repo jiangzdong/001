@@ -76,6 +76,25 @@ function vowelViseme(tokens = []) {
   return vowelVisemes(tokens)[0] || "REST";
 }
 
+function phonemeViseme(phone) {
+  const raw = String(phone || "").trim().toLowerCase();
+  if (!raw || /^(?:sil|sp|spn|<eps>|pau|_)+$/.test(raw)) return "CLOSED";
+  if (TONE_TOKEN.test(raw)) return null;
+  const value = raw.replace(/[˥˦˧˨˩ˉˊˇˋ˙]/gu, "");
+  if (/^(?:p|pʰ|pʲ|pʷ|b|m|mʲ|m̩|ㄅ|ㄆ|ㄇ)$/.test(value)) return "CLOSED";
+  if (/^(?:f|v|ㄈ)$/.test(value)) return "F";
+  if (/^(?:l|n|n̩|ɲ|ʎ|t|tʰ|tʲ|tʷ|d|ㄌ|ㄋ|ㄉ|ㄊ)$/.test(value)) return "L";
+  if (/^(?:s|z|ts|tsʰ|tɕ|tɕʰ|tɕʷ|ɕ|ɕʷ|j|q|x|ㄗ|ㄘ|ㄙ|ㄐ|ㄑ|ㄒ)$/.test(value)) return "S";
+  if (/^(?:ʂ|ʈʂ|ʈʂʰ|ʐ|ɻ|zh|ch|sh|r|ㄓ|ㄔ|ㄕ|ㄖ)$/.test(value)) return "SH";
+  if (/^(?:u|w|ɥ|y|ㄨ|ㄩ)$/.test(value)) return "U";
+  if (/^(?:o|ow|ㄛ)$/.test(value)) return "O";
+  if (/^(?:a|aj|aw|ㄚ|ㄞ|ㄠ|ㄢ|ㄤ)$/.test(value)) return "A";
+  if (/^(?:e|ej|ə|i|z̩|ʐ̩|er|ir|ㄧ|ㄜ|ㄝ|ㄟ|ㄣ|ㄥ|ㄦ)$/.test(value)) return "E";
+  const initial = initialViseme([value]);
+  if (initial !== "REST") return initial;
+  return vowelViseme([value]);
+}
+
 function buildVisemeUnits(text, pronunciations = new Map(), { includeInitialClosure = true } = {}) {
   const units = includeInitialClosure ? [{ shape: "CLOSED", weight: 0.58, pause: true }] : [];
   for (const character of String(text || "")) {
@@ -411,12 +430,76 @@ function createAlignedVisemes(text, pronunciations, samples, sampleRate, alignme
   return events.slice(0, 1200).map(({ timeMs, shape, character = "", characterIndex = -1, role = "pause" }) => ({ timeMs, shape, character, characterIndex, role }));
 }
 
+function createNativeDurationVisemes(text, pronunciations, samples, sampleRate, alignment = {}) {
+  const envelope = analyzeEnvelope(samples, sampleRate);
+  const rawTokens = Array.isArray(alignment?.tokens) ? alignment.tokens : [];
+  const rawDurations = Array.isArray(alignment?.durations) ? alignment.durations : [];
+  const rawSegments = Array.isArray(alignment?.segments) ? alignment.segments : [];
+  const unit = String(alignment?.unit || "frames").toLowerCase();
+  const frameShiftMs = Math.max(0.1, Number(alignment?.frameShiftMs) || 16);
+  const toMilliseconds = (value) => {
+    const duration = Math.max(0, Number(value) || 0);
+    if (unit === "seconds" || unit === "second" || unit === "s") return duration * 1000;
+    if (unit === "milliseconds" || unit === "millisecond" || unit === "ms") return duration;
+    return duration * frameShiftMs;
+  };
+
+  const segments = [];
+  if (rawSegments.length) {
+    let cursorMs = 0;
+    for (const segment of rawSegments) {
+      const startMs = Number.isFinite(Number(segment?.startMs)) ? Math.max(0, Number(segment.startMs)) : cursorMs;
+      const durationMs = Number.isFinite(Number(segment?.durationMs))
+        ? Math.max(0, Number(segment.durationMs))
+        : Math.max(0, Number(segment?.endMs) - startMs);
+      segments.push({ ...segment, token: segment?.token ?? segment?.phoneme ?? segment?.phone, startMs, durationMs });
+      cursorMs = startMs + durationMs;
+    }
+  } else if (rawTokens.length && rawTokens.length === rawDurations.length) {
+    let cursorMs = 0;
+    rawTokens.forEach((token, index) => {
+      const durationMs = toMilliseconds(rawDurations[index]);
+      segments.push({ token, startMs: cursorMs, durationMs });
+      cursorMs += durationMs;
+    });
+  }
+  if (!segments.length) return [];
+
+  const nativeDurationMs = Math.max(1, ...segments.map((segment) => segment.startMs + segment.durationMs));
+  const targetDurationMs = Math.max(1, envelope.durationMs);
+  const durationScale = targetDurationMs / nativeDurationMs;
+  const events = [{ timeMs: 0, shape: "CLOSED", role: "pause", character: "", characterIndex: -1 }];
+  for (const segment of segments) {
+    const shape = phonemeViseme(segment.token);
+    if (!shape) continue;
+    const timeMs = Math.round(Math.max(0, Math.min(targetDurationMs, segment.startMs * durationScale)));
+    const previous = events.at(-1);
+    const characterIndex = Number.isInteger(segment.characterIndex) ? segment.characterIndex : -1;
+    if (previous?.shape === shape && previous?.characterIndex === characterIndex) continue;
+    const event = {
+      timeMs: Math.max(previous?.timeMs + 1 || 0, timeMs),
+      shape,
+      role: "native-phoneme",
+      character: String(segment.character || ""),
+      characterIndex,
+    };
+    if (event.timeMs <= targetDurationMs) events.push(event);
+  }
+  const closeAt = Math.round(Math.max(events.at(-1)?.timeMs + 1 || 0, envelope.speechEndMs));
+  if (events.at(-1)?.shape !== "CLOSED" && closeAt <= targetDurationMs) {
+    events.push({ timeMs: closeAt, shape: "CLOSED", role: "pause", character: "", characterIndex: -1 });
+  }
+  return events.slice(0, 1200);
+}
+
 module.exports = {
   analyzeEnvelope,
   buildVisemeUnits,
   createAlignedVisemes,
+  createNativeDurationVisemes,
   createTimedVisemes,
   initialViseme,
+  phonemeViseme,
   splitTtsProgressText,
   vowelViseme,
   vowelVisemes,
