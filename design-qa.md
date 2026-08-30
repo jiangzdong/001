@@ -7,7 +7,7 @@
 - 增强: 时间戳口型的开度以音素轮廓为主，PCM 能量仅做 22% 范围的轻微强调；下颌开度保底随连续音素轮廓衰减，不再因 `CLOSED` 标签中点切换而突然撤销。
 - 删除: 删除误落在 reduced-motion 媒体查询外、导致眨眼图层全局 `display:none` 的规则；删除时间戳元音随 PCM 波谷反复塌陷的强耦合。
 - 重做: 严格 Electron 验收增加眨眼图层 `display` 与 `visibility` 检查，隐藏的半闭/全闭帧不能再被自动化误判为通过。
-- 验收状态: 已撤销会把嘴部遮罩扩展到右脸的 ROI 宽高缩放实验；Node 正式测试 134/134、Vite 4580 模块生产构建通过。`qa/strict-avatar-v1.4.13-r3/report.json` 在打包 Electron 自然 TTS 下为 PASS，覆盖 CLOSED/A/E/O/U、smile/concern/encourage、blink entry/closed/exit；嘴型重叠、错帧、软帧、左右网格边缘、隐藏眨眼样本均为 0。上半身复验的下颌最大步长为 0.081、左右差为 0、鼻/颈/脸颊平移均为 0；该报告仅因一次表情采样间隔产生的 0.091 非口型离群值未获全项 PASS，不作为口型完成证据。打包语音自检为 1.47 秒、RMS 0.0500、峰值 0.2942，确认音频非静音。
+- 验收状态: 已撤销会把嘴部遮罩扩展到右脸的 ROI 宽高缩放实验；Node 正式测试 134/134、Vite 4580 模块生产构建通过。`qa/strict-avatar-v1.4.13-r3/report.json` 在打包 Electron 自然 TTS 下为 PASS，覆盖 CLOSED/A/E/O/U、smile/concern/encourage、blink entry/closed/exit；嘴型重叠、错帧、软帧、左右网格边缘、隐藏眨眼样本均为 0。全新打包进程的 `qa/upper-body-motion-v1.4.13-fresh-after-push/report.json` 为 PASS：表情最大步长 0.010、下颌最大步长 0.066、左右下脸差为 0、鼻/颈/脸颊平移均为 0，讲话呼吸可见，4 次自然眨眼内姿态漂移均为 0。打包语音自检为 1.47 秒、RMS 0.0500、峰值 0.2942，确认音频非静音。
 - 成品: `release/XiaoAn-Health-Kiosk-1.4.13-x64.exe`，452,179,739 bytes（431.23 MiB），SHA-256 `07CDBA5BD1C594E6AB35B01AE3EC7D01A52DD7767D58A25D6B0CC9D08B4FADBE`。
 
 ## 2026-08-30 V1.4.12 本地音素时长契约、连续下颌形变与 MFA 标定
