@@ -1,0 +1,5 @@
+interface:
+  display_name: "适老健康自适应问答"
+  short_description: "识别健康意图，用语音或选项完成有限轮次追问并生成简短方案"
+  default_prompt: "请识别老年用户的健康意图，选择通用评测或专项问答，并在有限轮次内给出简短方案和医疗引导。"
+

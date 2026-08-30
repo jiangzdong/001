@@ -1,0 +1,45 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+release/
+outputs/
+.qa-electron-user-data/
+
+# Local QA captures and generated evidence
+qa/
+qa-v*.png
+*.log
+*.tmp
+
+# Python and local runtimes
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+ditto-validation/trt-env/
+
+# Downloaded SDKs, model checkpoints and generated Ditto outputs
+ditto-validation/downloads/
+ditto-validation/tensorrt/
+ditto-validation/ditto-source/.git/
+ditto-validation/ditto-source/checkpoints/
+ditto-validation/ditto-source/outputs/
+ditto-validation/ditto-source/tmp/
+ditto-validation/runtime-cache/
+ditto-validation/blink-peak-current.png
+ditto-validation/electron-frame-display.png
+ditto-validation/frame-*.jpg
+ditto-validation/local-gpu-*.jpg
+ditto-validation/*.wav
+ditto-validation/*.mp4
+
+# The removed alternate Melo voice is not part of the V1.4.10 default-voice runtime.
+models/vits-melo-tts-zh_en/
+
+# OS/editor state
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
