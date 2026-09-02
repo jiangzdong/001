@@ -1,4 +1,4 @@
-const VALID_VISEMES = new Set(["CLOSED", "REST", "A", "E", "O", "U", "F", "L", "S", "SH"]);
+const VALID_VISEMES = new Set(["CLOSED", "REST", "A", "E", "O", "U", "MBP", "F", "L", "NDT", "S", "SH"]);
 const TONE_TOKEN = /^\d+$|^[ˉˊˇˋ˙]$/;
 const INITIAL_TOKEN = /^(?:b|p|m|f|v|l|n|d|t|g|k|h|z|c|s|j|q|x|zh|ch|sh|r|w|y|ㄅ|ㄆ|ㄇ|ㄈ|ㄌ|ㄋ|ㄉ|ㄊ|ㄍ|ㄎ|ㄏ|ㄗ|ㄘ|ㄙ|ㄐ|ㄑ|ㄒ|ㄓ|ㄔ|ㄕ|ㄖ|ㄨ|ㄧ)$/;
 
@@ -21,11 +21,33 @@ function splitTtsProgressText(text, maxSentences = 2) {
   return groups;
 }
 
+function splitTtsStreamText(text, { minChars = 10, maxChars = 24 } = {}) {
+  const clauses = splitTtsProgressText(text, 1);
+  const minimum = Math.max(1, Math.round(Number(minChars) || 1));
+  const maximum = Math.max(minimum, Math.round(Number(maxChars) || minimum));
+  const groups = [];
+  let current = "";
+  for (const clause of clauses) {
+    if (current && current.length >= minimum && current.length + clause.length > maximum) {
+      groups.push(current);
+      current = clause;
+    } else {
+      current += clause;
+    }
+  }
+  if (current) groups.push(current);
+  if (groups.length > 1 && groups.at(-1).length < minimum && groups.at(-2).length + groups.at(-1).length <= maximum) {
+    groups.splice(-2, 2, `${groups.at(-2)}${groups.at(-1)}`);
+  }
+  return groups;
+}
+
 function initialViseme(tokens = []) {
   const initial = String(tokens[0] || "").toLowerCase();
-  if (/^(?:b|p|m)$|^[ㄅㄆㄇ]$/.test(initial)) return "CLOSED";
+  if (/^(?:b|p|m)$|^[ㄅㄆㄇ]$/.test(initial)) return "MBP";
   if (/^(?:f|v)$|^ㄈ$/.test(initial)) return "F";
-  if (/^(?:l|n|d|t)$|^[ㄌㄋㄉㄊ]$/.test(initial)) return "L";
+  if (/^(?:l)$|^ㄌ$/.test(initial)) return "L";
+  if (/^(?:n|d|t)$|^[ㄋㄉㄊ]$/.test(initial)) return "NDT";
   if (/^(?:z|c|s|j|q|x)$|^[ㄗㄘㄙㄐㄑㄒ]$/.test(initial)) return "S";
   if (/^(?:zh|ch|sh|r)$|^[ㄓㄔㄕㄖ]$/.test(initial)) return "SH";
   if (/^w$|^ㄨ$/.test(initial)) return "U";
@@ -81,9 +103,10 @@ function phonemeViseme(phone) {
   if (!raw || /^(?:sil|sp|spn|<eps>|pau|_)+$/.test(raw)) return "CLOSED";
   if (TONE_TOKEN.test(raw)) return null;
   const value = raw.replace(/[˥˦˧˨˩ˉˊˇˋ˙]/gu, "");
-  if (/^(?:p|pʰ|pʲ|pʷ|b|m|mʲ|m̩|ㄅ|ㄆ|ㄇ)$/.test(value)) return "CLOSED";
+  if (/^(?:p|pʰ|pʲ|pʷ|b|m|mʲ|m̩|ㄅ|ㄆ|ㄇ)$/.test(value)) return "MBP";
   if (/^(?:f|v|ㄈ)$/.test(value)) return "F";
-  if (/^(?:l|n|n̩|ɲ|ʎ|t|tʰ|tʲ|tʷ|d|ㄌ|ㄋ|ㄉ|ㄊ)$/.test(value)) return "L";
+  if (/^(?:l|ʎ|ㄌ)$/.test(value)) return "L";
+  if (/^(?:n|n̩|ɲ|t|tʰ|tʲ|tʷ|d|ㄋ|ㄉ|ㄊ)$/.test(value)) return "NDT";
   if (/^(?:s|z|ts|tsʰ|tɕ|tɕʰ|tɕʷ|ɕ|ɕʷ|j|q|x|ㄗ|ㄘ|ㄙ|ㄐ|ㄑ|ㄒ)$/.test(value)) return "S";
   if (/^(?:ʂ|ʈʂ|ʈʂʰ|ʐ|ɻ|zh|ch|sh|r|ㄓ|ㄔ|ㄕ|ㄖ)$/.test(value)) return "SH";
   if (/^(?:u|w|ɥ|y|ㄨ|ㄩ)$/.test(value)) return "U";
@@ -501,6 +524,7 @@ module.exports = {
   initialViseme,
   phonemeViseme,
   splitTtsProgressText,
+  splitTtsStreamText,
   vowelViseme,
   vowelVisemes,
 };

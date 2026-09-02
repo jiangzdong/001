@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, safeStorage, screen } = require("electron");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { spawn } = require("child_process");
 const { createSpeechService } = require("./speech-service.cjs");
 const { createAvatarService } = require("./avatar-service.cjs");
 const { createSkillLoader } = require("./skill-loader.cjs");
@@ -8,23 +10,82 @@ const { normalizeDeepSeekChatResult } = require("./deepseek-stream.cjs");
 const { streamDeepSeekChat: requestDeepSeekStream } = require("./deepseek-client.cjs");
 const { createRuntimeTelemetry } = require("./telemetry.cjs");
 const { parseSoakDuration, startSoakMonitor } = require("./soak-monitor.cjs");
+const { createXiaoanHarness } = require("./harness/index.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.commandLine.appendSwitch("enable-features", "WebSpeechAPI");
+// This is a dedicated second-screen kiosk. Windows may classify its renderer
+// as occluded while the operator works in another app on the primary display;
+// never collapse the avatar animation loop to the 1 Hz background cadence.
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+// Some Windows kiosk panels expose touch as pointer input but Chromium keeps
+// touch event synthesis in automatic mode. Force it on for the packaged app so
+// physical finger taps reach React's pointer handlers as well as click events.
+app.commandLine.appendSwitch("touch-events", "enabled");
 // Keep the kiosk viewport and Windows pointer coordinates in the same physical-pixel space.
 // This is required for portrait touch displays configured at 200% scale.
 app.commandLine.appendSwitch("force-device-scale-factor", "1");
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const allowMultipleInstances = process.argv.includes("--allow-multiple-instances");
+const hasSingleInstanceLock = allowMultipleInstances || app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 const legacyUserDataPath = app.getPath("userData");
 const stableUserDataPath = path.join(app.getPath("appData"), "XiaoAnHealthKiosk");
 app.setPath("userData", stableUserDataPath);
+const userDataArgument = process.argv.find((argument) => argument.startsWith("--user-data-dir="));
+if (allowMultipleInstances && userDataArgument) {
+  app.setPath("userData", path.resolve(userDataArgument.slice("--user-data-dir=".length)));
+}
 
 let healthSkillLoader;
 let runtimeTelemetry;
 let mainWindow;
 let stopSoakMonitor = () => {};
+let agentHarness;
+
+function isolateWindowsKioskRenderer(rendererPid) {
+  if (process.platform !== "win32" || !Number.isInteger(rendererPid) || rendererPid <= 0) return;
+  const logicalCpuCount = os.cpus()?.length || 0;
+  // The target kiosk has a hybrid 12-thread CPU. Offline VITS only needs two
+  // inference threads, while the 4K portrait renderer benefits from the first
+  // (performance-core) processor group. Keep this conservative and skip masks
+  // that would exceed PowerShell's reliable signed 32-bit affinity range.
+  if (logicalCpuCount < 6 || logicalCpuCount > 30) return;
+  const rendererCpuCount = Math.max(4, Math.ceil(logicalCpuCount * 2 / 3));
+  const rendererMask = (1n << BigInt(rendererCpuCount)) - 1n;
+  const allCpuMask = (1n << BigInt(logicalCpuCount)) - 1n;
+  const mainMask = allCpuMask ^ rendererMask;
+  const command = [
+    "$ErrorActionPreference='Stop'",
+    `$main=[Diagnostics.Process]::GetProcessById(${process.pid})`,
+    `$renderer=[Diagnostics.Process]::GetProcessById(${rendererPid})`,
+    `$main.ProcessorAffinity=[IntPtr]${mainMask}`,
+    `$renderer.ProcessorAffinity=[IntPtr]${rendererMask}`,
+  ].join(";");
+  try {
+    const helper = spawn("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle", "Hidden",
+      "-Command", command,
+    ], { windowsHide: true, stdio: "ignore" });
+    helper.once("error", (error) => runtimeTelemetry?.record("runtime", "cpu_affinity_warning", {
+      status: "warning",
+      message: error?.message || String(error),
+    }));
+    helper.once("exit", (code) => runtimeTelemetry?.record("runtime", "cpu_affinity_configured", {
+      status: code === 0 ? "ok" : "warning",
+      code: Number(code) || 0,
+      logicalCpuCount,
+      mainMask: mainMask.toString(),
+      rendererMask: rendererMask.toString(),
+    }));
+  } catch (error) {
+    runtimeTelemetry?.record("runtime", "cpu_affinity_warning", { status: "warning", message: error?.message || String(error) });
+  }
+}
 
 app.on("second-instance", () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -35,7 +96,8 @@ app.on("before-quit", () => { app.isQuitting = true; });
 const activeDeepSeekRequests = new Map();
 
 function migrateLegacyUserData() {
-  fs.mkdirSync(stableUserDataPath, { recursive: true });
+  const activeUserDataPath = app.getPath("userData");
+  fs.mkdirSync(activeUserDataPath, { recursive: true });
   const appDataPath = app.getPath("appData");
   const candidates = new Set([
     legacyUserDataPath,
@@ -48,12 +110,12 @@ function migrateLegacyUserData() {
     }
   } catch {}
   const ordered = [...candidates]
-    .filter((directory) => path.resolve(directory) !== path.resolve(stableUserDataPath) && fs.existsSync(directory))
+    .filter((directory) => path.resolve(directory) !== path.resolve(activeUserDataPath) && fs.existsSync(directory))
     .sort((a, b) => {
       try { return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs; } catch { return 0; }
     });
 
-  const credentialTarget = path.join(stableUserDataPath, "deepseek.credential");
+  const credentialTarget = path.join(activeUserDataPath, "deepseek.credential");
   if (!fs.existsSync(credentialTarget)) {
     const credentialSource = ordered.map((directory) => path.join(directory, "deepseek.credential")).find((filename) => fs.existsSync(filename));
     if (credentialSource) {
@@ -61,7 +123,7 @@ function migrateLegacyUserData() {
     }
   }
 
-  const cacheTarget = path.join(stableUserDataPath, "avatar-video-cache");
+  const cacheTarget = path.join(activeUserDataPath, "avatar-video-cache");
   fs.mkdirSync(cacheTarget, { recursive: true });
   const cachedVideos = [];
   for (const directory of ordered) {
@@ -327,6 +389,20 @@ function createWindow() {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, "..", "dist", "client", "index.html"));
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("did-finish-load", () => {
+    // Offline VITS runs on worker threads in the main process. Give the 4K
+    // portrait renderer scheduling precedence so PCM generation cannot starve
+    // requestAnimationFrame during visible mouth and jaw transitions.
+    try {
+      const rendererPid = win.webContents.getOSProcessId();
+      if (rendererPid > 0) {
+        os.setPriority(rendererPid, os.constants.priority.PRIORITY_ABOVE_NORMAL);
+        isolateWindowsKioskRenderer(rendererPid);
+      }
+    } catch (error) {
+      runtimeTelemetry?.record("runtime", "renderer_priority_warning", { status: "warning", message: error?.message || String(error) });
+    }
+  });
   win.webContents.on("render-process-gone", (_event, details) => {
     runtimeTelemetry?.record("runtime", "renderer_gone", { status: "error", exitCode: Number(details?.exitCode) || 0 });
     if (!win.isDestroyed() && !app.isQuitting) setTimeout(() => win.reload(), 1200);
@@ -347,7 +423,33 @@ app.whenReady().then(async () => {
   const speech = createSpeechService({ app });
   const avatar = createAvatarService({ cacheDir: path.join(app.getPath("userData"), "avatar-video-cache") });
   runtimeTelemetry = createRuntimeTelemetry({ directory: path.join(app.getPath("userData"), "telemetry") });
+  try {
+    // VITS workers share the Electron main process. Keep that CPU work below
+    // the visible 4K renderer, which is promoted separately after page load.
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+  } catch (error) {
+    runtimeTelemetry.record("runtime", "main_priority_warning", { status: "warning", message: error?.message || String(error) });
+  }
   healthSkillLoader = createSkillLoader({ app });
+  agentHarness = createXiaoanHarness();
+  if (process.argv.includes("--harness-self-test")) {
+    const checks = await Promise.all([
+      agentHarness.run({ runId: "selftest-meal", sessionId: "selftest", text: "助餐服务几点开始" }),
+      agentHarness.run({ runId: "selftest-lecture", sessionId: "selftest", text: "健康讲堂讲什么" }),
+      agentHarness.run({ runId: "selftest-member", sessionId: "selftest", text: "查询我的积分", actor: { role: "anonymous", authLevel: "none", scopes: [] } }),
+    ]);
+    const memory = agentHarness.memory("selftest");
+    const sensitiveMemory = memory.turns.find((turn) => turn.sensitive);
+    const report = {
+      ok: checks[0]?.status === "completed" && checks[1]?.status === "completed" && checks[2]?.status === "auth_required" && memory.turns.length === 3 && sensitiveMemory?.userText === null && sensitiveMemory?.assistantText === null,
+      packaged: app.isPackaged,
+      tools: agentHarness.status().tools.map((tool) => tool.name),
+      memory: { ...agentHarness.status().memory, turns: memory.turns.length, sensitiveRedacted: sensitiveMemory?.userText === null && sensitiveMemory?.assistantText === null },
+      checks: checks.map((result) => ({ runId: result.runId, status: result.status, intent: result.intent, trace: result.trace?.map((event) => event.type) })),
+    };
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    speech.close(); app.exit(report.ok ? 0 : 1); return;
+  }
   if (process.argv.includes("--speech-self-test")) {
     try {
       const modelsRoot = app.isPackaged ? path.join(process.resourcesPath, "models") : path.join(app.getAppPath(), "models");
@@ -475,6 +577,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("deepseek:cancel", (_event, requestId) => ({ ok: true, cancelled: cancelDeepSeekRequest(requestId) }));
   ipcMain.handle("deepseek:interpret-assessment", (_event, payload) => interpretAssessment(payload || {}));
   ipcMain.handle("deepseek:interpret-symptom", (_event, payload) => interpretSymptom(payload || {}));
+  ipcMain.handle("agent:turn", (_event, payload) => agentHarness.run(payload || {}));
+  ipcMain.handle("agent:cancel", (_event, runId) => ({ ok: true, cancelled: agentHarness.cancel(runId) }));
+  ipcMain.handle("agent:memory", (_event, sessionId) => agentHarness.memory(sessionId));
+  ipcMain.handle("agent:clear-session", (_event, sessionId) => ({ ok: true, cleared: agentHarness.clearSession(sessionId) }));
+  ipcMain.handle("agent:status", () => agentHarness.status());
   ipcMain.handle("runtime:status", async () => {
     const [speechStatus, avatarStatus] = await Promise.all([speech.status(), avatar.status()]);
     const windowBounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
@@ -491,6 +598,7 @@ app.whenReady().then(async () => {
       display: display ? { id: display.id, rotation: display.rotation, scaleFactor: display.scaleFactor, bounds: display.bounds, workArea: display.workArea } : null,
       expectedKioskViewport: { width: 1200, height: 1920, contentRotation: 0 },
       recentMetrics: runtimeTelemetry.snapshot().slice(-20),
+      harness: agentHarness.status(),
     };
   });
   ipcMain.handle("app:exit", () => app.quit());

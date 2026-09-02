@@ -29,6 +29,7 @@ test("speech mood and phrase prosody remain restrained and semantic", () => {
   assert.ok(Math.abs(sample.tilt) < 0.5);
   const blink = createBlinkProfile(0.5, { speaking: true });
   assert.ok(blink.closeMs >= 112 && blink.openMs > blink.closeMs);
+  assert.ok(blink.holdMs >= 88 && blink.holdMs <= 112);
 });
 
 test("visemes follow the audio clock and interpolate instead of hard switching", () => {
@@ -137,8 +138,23 @@ test("timestamped visemes preserve aligned events without adding a second visibl
   assert.equal(state.displayed, "O");
 });
 
+test("timestamped speech ignores a two-frame CLOSED blip but keeps a real pause", () => {
+  let state = stabilizeVisemeLabel(null, "A", 0, true, { timestamped: true });
+  state = stabilizeVisemeLabel(state, "A", 80, true, { timestamped: true });
+  assert.equal(state.displayed, "A");
+  state = stabilizeVisemeLabel(state, "CLOSED", 96, true, { timestamped: true });
+  state = stabilizeVisemeLabel(state, "CLOSED", 112, true, { timestamped: true });
+  state = stabilizeVisemeLabel(state, "A", 128, true, { timestamped: true });
+  assert.equal(state.displayed, "A");
+  state = stabilizeVisemeLabel(state, "CLOSED", 160, true, { timestamped: true });
+  state = stabilizeVisemeLabel(state, "CLOSED", 240, true, { timestamped: true });
+  assert.equal(state.displayed, "CLOSED");
+});
+
 test("semantic expression eases in and stays below a rigid full-frame hold", () => {
-  assert.equal(sampleExpressionStrength({ mood: "neutral", speaking: true, elapsedMs: 1000, energy: 1 }), 0);
+  const neutralSpeech = sampleExpressionStrength({ mood: "neutral", speaking: true, elapsedMs: 1000, energy: 1 });
+  assert.ok(neutralSpeech > 0.15 && neutralSpeech < 0.23);
+  assert.equal(sampleExpressionStrength({ mood: "neutral", speaking: false, elapsedMs: 1000, energy: 1 }), 0);
   const onset = sampleExpressionStrength({ mood: "concern", speaking: true, elapsedMs: 80, energy: 0.6 });
   const settled = sampleExpressionStrength({ mood: "concern", speaking: true, elapsedMs: 900, energy: 0.6 });
   assert.ok(onset > 0 && onset < settled);
@@ -181,16 +197,31 @@ test("jaw and lower-face deformation follows aperture without independent jitter
 test("viseme frames crossfade without exposing two dominant mouths", () => {
   let blend = advanceVisemeBlend(null, "CLOSED", 0);
   blend = advanceVisemeBlend(blend, "A", 10);
+  assert.equal(blend.durationMs, 146);
   blend = advanceVisemeBlend(blend, "A", 58);
+  assert.equal(blend.dominant, "CLOSED");
+  assert.ok(blend.weights.A > 0.15 && blend.weights.A < 0.5);
+  blend = advanceVisemeBlend(blend, "A", 100);
   assert.equal(blend.dominant, "A");
   assert.ok(blend.weights.A > 0.5 && blend.weights.A <= 1);
   blend = advanceVisemeBlend(blend, "E", 120);
-  blend = advanceVisemeBlend(blend, "E", 174);
+  assert.equal(blend.to, "A");
+  assert.equal(blend.pending, "E");
+  blend = advanceVisemeBlend(blend, "E", 180);
+  assert.equal(blend.from, "A");
+  assert.equal(blend.to, "E");
+  assert.equal(blend.durationMs, 168);
+  blend = advanceVisemeBlend(blend, "E", 280);
   const dominantWeights = Object.values(blend.weights).filter((weight) => weight > 0.5);
   assert.equal(dominantWeights.length, 1);
   assert.ok(Math.abs(Object.values(blend.weights).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-9);
-  blend = advanceVisemeBlend(blend, "CLOSED", 240);
-  blend = advanceVisemeBlend(blend, "CLOSED", 362);
+  blend = advanceVisemeBlend(blend, "CLOSED", 300);
+  assert.equal(blend.pending, "CLOSED");
+  blend = advanceVisemeBlend(blend, "CLOSED", 380);
+  assert.equal(blend.from, "E");
+  assert.equal(blend.to, "CLOSED");
+  assert.equal(blend.durationMs, 188);
+  blend = advanceVisemeBlend(blend, "CLOSED", 596);
   assert.equal(blend.dominant, "CLOSED");
   assert.deepEqual(blend.weights, {});
 });
@@ -211,11 +242,12 @@ test("blink cadence varies by semantic mood and supports a restrained double bli
 });
 
 test("renderer keeps one continuous motion loop, protects speech callbacks, and softens video exit", async () => {
-  const [appSource, styles, speechService, speechWorker] = await Promise.all([
+  const [appSource, styles, speechService, speechWorker, mainProcess] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../electron/speech-service.cjs", import.meta.url), "utf8"),
     readFile(new URL("../electron/speech-worker.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../electron/main.cjs", import.meta.url), "utf8"),
   ]);
   assert.match(appSource, /shouldUseAuthenticAvatar\(nextSymptomState\)/);
   assert.match(appSource, /isCurrentTurn[\s\S]*ticket === speechTicketRef\.current[\s\S]*activeSpeechTurnRef\.current === turnId/);
@@ -232,12 +264,17 @@ test("renderer keeps one continuous motion loop, protects speech callbacks, and 
   assert.match(appSource, /playNativeSegment\(\{ ok: true, \.\.\.chunk \}/);
   assert.doesNotMatch(appSource, /alignSpeech\(segmentText/);
   assert.match(appSource, /dedicated alignment worker has already tied exact text timestamps[\s\S]*without running ASR on the animation thread/);
-  assert.match(speechService, /const ttsWorkerCount = 2[\s\S]*parallelPrefetch: ttsWorkerCount[\s\S]*synthesisTails\[slot\]/);
-  assert.match(speechService, /alignAndDispatch[\s\S]*await alignmentTail/);
-  assert.match(speechWorker, /ttsThreads\) \|\| 3/);
-  assert.match(speechWorker, /splitTtsProgressText\(text, 2\)/);
+  assert.match(speechService, /const ttsWorkerCount = 1[\s\S]*parallelPrefetch: ttsWorkerCount[\s\S]*synthesisTails\[slot\]/);
+  assert.match(speechService, /ttsThreads: 2, alignmentThreads: 1/);
+  assert.match(mainProcess, /PRIORITY_ABOVE_NORMAL/);
+  assert.match(mainProcess, /process\.pid, os\.constants\.priority\.PRIORITY_BELOW_NORMAL/);
+  assert.match(mainProcess, /disable-backgrounding-occluded-windows[\s\S]*disable-renderer-backgrounding[\s\S]*disable-background-timer-throttling/);
+  assert.doesNotMatch(speechService, /alignAndDispatch|await alignmentTail/);
+  assert.match(speechService, /onChunk\?\.\(chunk\)/);
+  assert.match(speechWorker, /ttsThreads\) \|\| 2/);
+  assert.match(speechWorker, /splitTtsStreamText\(text, \{ minChars: 10, maxChars: 24 \}\)/);
   assert.match(speechWorker, /text: chunkText/);
-  assert.match(speechWorker, /minimumChunkSamples = Math\.round\(engine\.sampleRate \* 0\.62\)[\s\S]*flushPendingChunk\(false\)[\s\S]*flushPendingChunk\(true\)/);
+  assert.match(speechWorker, /for \(const chunkText of streamTexts\)[\s\S]*engine\.generateAsync[\s\S]*event: "chunk"/);
   assert.match(appSource, /dataset\.semanticExpression = displayedMood/);
   assert.match(appSource, /sampleExpressionStrength[\s\S]*--expression-strength/);
   assert.match(appSource, /sampleJawPose[\s\S]*--jaw-drop[\s\S]*--jaw-scale-y/);
@@ -249,15 +286,15 @@ test("renderer keeps one continuous motion loop, protects speech callbacks, and 
   assert.match(appSource, /frameTimestampMs \+ 180 < playbackElapsedMs/);
   assert.doesNotMatch(appSource, /const bufferedFrames = frames\.splice\(0\)/);
   assert.match(appSource, /--blink-progress/);
-  assert.match(appSource, /xiaoa-blink-half-v5\.png/);
+  assert.match(appSource, /xiaoa-blink-half-v6\.png/);
   assert.match(appSource, /blinkStartedAt >= 0 && !blinkBodyPose[\s\S]*renderedBodyPose = blinkBodyPose/);
   assert.match(appSource, /timestamp - pendingMoodSince >= 180/);
   assert.match(appSource, /moodPoseAlpha = smoothingAlpha\(deltaMs, 460\)/);
   assert.match(appSource, /sampleUpperBodyPose[\s\S]*--body-x[\s\S]*--body-tilt[\s\S]*--chest-rise[\s\S]*--chest-scale-x/);
   assert.doesNotMatch(appSource, /mouthFrameNodes|node\.style\.opacity/);
-  assert.match(appSource, /Photographic mouth sprites must never be alpha-blended[\s\S]*dominant = timelineMix < 0\.5 \? sample\.current : sample\.next[\s\S]*\{ \[dominant\]: 1 \}/);
-  assert.doesNotMatch(appSource, /outgoingWeight = 1 - timelineMix[\s\S]*incomingWeight = timelineMix/);
-  assert.match(appSource, /xiaoa-blink-closed-v3\.png/);
+  assert.match(appSource, /visemeBlend = advanceVisemeBlend\(visemeBlend, visemeState\.displayed, timestamp\)[\s\S]*renderedMouthWeights = visemeBlend\.weights/);
+  assert.match(appSource, /mouthBlend: visemeBlend/);
+  assert.match(appSource, /xiaoa-blink-closed-v4\.png/);
   assert.match(styles, /identity-locked blink frame[\s\S]*data-blink-phase="half"[\s\S]*data-blink-phase="closed"/);
   assert.doesNotMatch(styles, /\.digital-human__blink-frame\s*\{\s*display:\s*none;/);
   assert.match(styles, /data-expression="blink"\] \.digital-human__expression-frame \{ transition:none; \}/);

@@ -13,7 +13,7 @@ import { buildPersonalizedHealthPlan } from "./skills/personalizedHealthPlan.js"
 import { advanceSymptomConversation, resetSymptomConversation, startSymptomConversation } from "./symptomConversation.js";
 import { buildOffTopicReply } from "./offTopicReply.js";
 import { createIncrementalSpeechSegmenter, createSpeechChunkQueue, createSpeechTurnId, splitSpeechSegments } from "./streamingSpeech.js";
-import { buildLocalFaceActions, loadLocalFaceRigImages, renderLocalFaceRig } from "./localFaceRig.js";
+import { buildLocalFaceActions, loadLocalFaceRigImages, prepareLocalFaceRigTextures, renderLocalFaceRig } from "./localFaceRig.js";
 
 const quickPrompts = ["我最近有点头痛", "最近睡眠不太好", "我想做健康测评"];
 const appVersion = `V${__APP_VERSION__}`;
@@ -26,12 +26,14 @@ const visemeProfiles = {
   REST: { open: 0.18, width: 0.98, radius: "44%" },
   A: { open: 0.94, width: 1.01, radius: "42%" },
   E: { open: 0.38, width: 1.2, radius: "36%" },
-  O: { open: 0.68, width: 0.82, radius: "50%" },
-  U: { open: 0.4, width: 0.72, radius: "50%" },
+  O: { open: 0.6, width: 0.92, radius: "47%" },
+  U: { open: 0.27, width: 0.94, radius: "46%" },
+  MBP: { open: 0.03, width: 0.91, radius: "46%" },
   F: { open: 0.22, width: 1.04, radius: "38%" },
   L: { open: 0.5, width: 1.02, radius: "42%" },
+  NDT: { open: 0.14, width: 1, radius: "40%" },
   S: { open: 0.24, width: 1.12, radius: "34%" },
-  SH: { open: 0.46, width: 0.8, radius: "50%" },
+  SH: { open: 0.32, width: 0.96, radius: "44%" },
 };
 function loadVolumePreference() {
   try {
@@ -258,6 +260,7 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       if (canvas && master) {
         canvas.width = master.naturalWidth;
         canvas.height = master.naturalHeight;
+        prepareLocalFaceRigTextures(canvas, images);
       }
       setLocalRigReady(true);
     }).catch(() => {
@@ -373,7 +376,10 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       // rate to prevent a delayed render frame from creating a visible jaw snap.
       const jawDeltaMs = Math.min(facialDeltaMs, 32);
       const jawCandidate = smoothedJawOpen + (jawTarget.open - smoothedJawOpen) * smoothingAlpha(jawDeltaMs, jawTarget.open > smoothedJawOpen ? 64 : settling ? 98 : 104);
-      smoothedJawOpen = approachByRate(smoothedJawOpen, jawCandidate, jawDeltaMs, jawTarget.open > smoothedJawOpen ? 0.00135 : 0.0012);
+      // Follow short Mandarin vowel events quickly enough for the mandible to
+      // reach the authored pose. The former rate cap allowed the lip texture to
+      // open while the chin was still almost stationary in packaged playback.
+      smoothedJawOpen = approachByRate(smoothedJawOpen, jawCandidate, jawDeltaMs, jawTarget.open > smoothedJawOpen ? 0.006 : 0.0032);
       const jawPose = sampleJawPose({ mouthOpen: smoothedJawOpen, energy: smoothedLevel, speaking: offlineSpeaking || settling });
       avatar.style.setProperty("--mouth-open", smoothedOpen.toFixed(3));
       avatar.style.setProperty("--mouth-shift", `${(smoothedOpen * 0.48).toFixed(3)}cqw`);
@@ -391,22 +397,8 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
       // CLOSED; energy controls aperture, while the timeline controls shape.
       const desiredViseme = offlineSpeaking && (timelineDriven || gateState.open) ? profile.label : "CLOSED";
       visemeState = stabilizeVisemeLabel(visemeState, desiredViseme, timestamp, offlineSpeaking, { timestamped: timelineDriven });
-      if (timelineDriven) {
-        let timelineMix = Math.min(1, Math.max(0, Number(sample.mix) || 0));
-        if (Math.abs(timelineMix - 0.5) < 0.0001) timelineMix = 0.5001;
-        // Photographic mouth sprites must never be alpha-blended: two lip
-        // textures at once look soft even when their landmarks are aligned.
-        // The continuous jaw/lower-face deformation carries the in-between
-        // motion while the sharp sprite changes at the coarticulation midpoint.
-        const dominant = timelineMix < 0.5 ? sample.current : sample.next;
-        renderedMouthWeights = dominant && dominant !== "CLOSED" ? { [dominant]: 1 } : {};
-        visemeBlend = { mix: timelineMix, dominant, weights: renderedMouthWeights };
-      } else {
-        const blended = advanceVisemeBlend(visemeBlend, visemeState.displayed, timestamp);
-        const dominant = blended.dominant;
-        renderedMouthWeights = dominant && dominant !== "CLOSED" ? { [dominant]: 1 } : {};
-        visemeBlend = { ...blended, dominant, weights: renderedMouthWeights };
-      }
+      visemeBlend = advanceVisemeBlend(visemeBlend, visemeState.displayed, timestamp);
+      renderedMouthWeights = visemeBlend.weights;
       avatar.dataset.viseme = visemeBlend.dominant;
       avatar.dataset.visemeTarget = timelineDriven ? profile.label : visemeState.displayed;
       avatar.dataset.visemeCurrent = sample.current || "CLOSED";
@@ -458,13 +450,14 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
         mouthWidth: smoothedWidth,
         expression: displayedMood,
         expressionStrength: smoothedExpressionStrength,
+        mouthBlend: visemeBlend,
       });
-      const rigSignature = `${localFaceActions.viseme}|${localFaceActions.jawOpen.toFixed(3)}|${localFaceActions.mouthStretchLeft.toFixed(3)}|${localFaceActions.mouthPucker.toFixed(3)}`;
+      const rigSignature = `${localFaceActions.viseme}|${localFaceActions.mouthBlend.from}>${localFaceActions.mouthBlend.to}@${localFaceActions.mouthBlend.mix.toFixed(3)}|${localFaceActions.jawOpen.toFixed(3)}|${localFaceActions.mouthStretchLeft.toFixed(3)}|${localFaceActions.mouthPucker.toFixed(3)}`;
       if (avatarMode === "local" && localRigReady && (rigSignature !== lastRigSignature || timestamp - lastRigPaintAt >= 33)) {
         if (renderLocalFaceRig(localRigCanvasRef.current, localRigImagesRef.current, localFaceActions)) {
           lastRigPaintAt = timestamp;
           lastRigSignature = rigSignature;
-          avatar.dataset.localRig = "local-mouth-chin-v2";
+          avatar.dataset.localRig = "local-mouth-chin-v34";
         }
       }
       const bodyPose = sampleUpperBodyPose({
@@ -626,14 +619,14 @@ function DigitalHuman({ speaking, analyserRef, visemeTimelineRef, videoActive, v
     <img src="./assets/xiaoa-ditto-master-v1.0.3.png" alt="写实数字健康管理师小安" className="digital-human__image"/>
     <img src="./assets/xiaoa-ditto-master-v1.0.3.png" alt="" className="digital-human__breath-frame" aria-hidden="true"/>
     <canvas ref={localRigCanvasRef} className="digital-human__local-rig" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-smile-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--smile" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-concern-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--concern" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-encourage-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--encourage" aria-hidden="true"/>
-    <img src="./assets/xiaoa-expression-listening-v3.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--listening" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-half-v5.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-left" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-half-v5.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-right" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-closed-v3.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-left" aria-hidden="true"/>
-    <img src="./assets/xiaoa-blink-closed-v3.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-right" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-smile-v4.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--smile" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-concern-v4.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--concern" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-encourage-v4.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--encourage" aria-hidden="true"/>
+    <img src="./assets/xiaoa-expression-listening-v4.png" alt="" className="digital-human__expression-frame digital-human__expression-frame--listening" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-half-v6.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-left" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-half-v6.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--half digital-human__blink-frame--screen-right" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-closed-v4.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-left" aria-hidden="true"/>
+    <img src="./assets/xiaoa-blink-closed-v4.png" alt="" className="digital-human__blink-frame digital-human__blink-frame--closed digital-human__blink-frame--screen-right" aria-hidden="true"/>
     <video ref={videoRef} className="digital-human__video" src={videoSrc} preload="auto" playsInline onLoadedData={confirmVideoFrame} onPlaying={confirmVideoFrame} onEnded={finishVideo} onError={failVideo} aria-label="小安同步嘴型讲解"/>
     <canvas ref={frameCanvasRef} className="digital-human__frame" aria-label="小安实时嘴型帧流"/>
   </div>;

@@ -2,7 +2,7 @@ const { parentPort, workerData } = require("worker_threads");
 const fs = require("fs");
 const path = require("path");
 const sherpa = require("sherpa-onnx-node");
-const { createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, splitTtsProgressText } = require("./viseme-timeline.cjs");
+const { createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, splitTtsStreamText } = require("./viseme-timeline.cjs");
 const { extractNativeDurationAlignment } = require("./vits-duration-contract.cjs");
 
 const senseVoiceDir = path.join(workerData.modelsRoot, "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17");
@@ -82,7 +82,7 @@ function getTts(modelId = "zh-ll") {
           lexicon: path.join(directory, "lexicon.txt"),
         },
         debug: false,
-        numThreads: Math.max(1, Math.min(Number(workerData.ttsThreads) || 3, require("os").cpus().length - 1)),
+        numThreads: Math.max(1, Math.min(Number(workerData.ttsThreads) || 2, require("os").cpus().length - 1)),
         provider: "cpu",
       },
       maxNumSentences: 2,
@@ -144,87 +144,53 @@ async function synthesizeStream(id, text, speed, modelId, sid, turnId) {
     silenceScale: 0.2,
   });
   const key = String(turnId || "");
-  const progressTexts = splitTtsProgressText(text, 2);
-  const minimumChunkSamples = Math.round(engine.sampleRate * 0.62);
-  let progressIndex = 0;
+  // Sherpa's callback batching treats a long Mandarin sentence as one unit,
+  // even when it contains several commas or enumeration marks. Plan balanced
+  // text chunks explicitly so a 7-8 second sentence cannot hold the next audio
+  // buffer after the greeting has already finished playing.
+  const streamTexts = splitTtsStreamText(text, { minChars: 10, maxChars: 24 });
   let emittedChunkIndex = 0;
   let totalSamples = 0;
-  let pendingSampleCount = 0;
-  let pendingSamples = [];
-  let pendingTexts = [];
-  let pendingProgress = 0;
   const startedAt = performance.now();
-  const flushPendingChunk = (force = false) => {
-    if (!pendingSampleCount || (!force && pendingSampleCount < minimumChunkSamples)) return;
-    const samples = new Float32Array(pendingSampleCount);
-    let offset = 0;
-    for (const part of pendingSamples) {
-      samples.set(part, offset);
-      offset += part.length;
-    }
-    const chunkText = pendingTexts.join("") || text;
-    const timeline = createVisemeSequence(chunkText, safeModelId, samples, engine.sampleRate, null, { includeInitialClosure: emittedChunkIndex === 0 });
+  for (const chunkText of streamTexts) {
+    if (key && cancelledTurns.has(key)) break;
+    const audio = await engine.generateAsync({
+      text: chunkText,
+      enableExternalBuffer: false,
+      generationConfig,
+    });
+    if (key && cancelledTurns.has(key)) break;
+    const samples = Float32Array.from(audio?.samples || []);
+    if (!samples.length) continue;
+    totalSamples += samples.length;
+    const timeline = createVisemeSequence(
+      chunkText,
+      safeModelId,
+      samples,
+      audio.sampleRate || engine.sampleRate,
+      audio,
+      { includeInitialClosure: emittedChunkIndex === 0 },
+    );
     parentPort.postMessage({
       id,
       event: "chunk",
       result: {
         samples,
-        sampleRate: engine.sampleRate,
+        sampleRate: audio.sampleRate || engine.sampleRate,
         visemes: timeline.visemes,
         alignment: timeline.alignment,
         chunkIndex: emittedChunkIndex,
-        progress: pendingProgress,
+        progress: (emittedChunkIndex + 1) / Math.max(1, streamTexts.length),
         generatedAtMs: performance.now() - startedAt,
         text: chunkText,
       },
     }, [samples.buffer]);
     emittedChunkIndex += 1;
-    pendingSampleCount = 0;
-    pendingSamples = [];
-    pendingTexts = [];
-    pendingProgress = 0;
-  };
-  const audio = await engine.generateAsync({
-    text,
-    enableExternalBuffer: false,
-    generationConfig,
-    onProgress(info) {
-      if (key && cancelledTurns.has(key)) return false;
-      const samples = Float32Array.from(info?.samples || []);
-      if (!samples.length) return true;
-      totalSamples += samples.length;
-      // Sherpa emits one PCM callback per maxNumSentences batch. Binding the
-      // full segment text to every small buffer compresses later phonemes and
-      // makes the visible mouth race ahead. Align each callback to its own
-      // punctuation-delimited text batch instead.
-      const rawProgress = Number(info?.progress) || 0;
-      const normalizedProgress = Math.max(0, Math.min(1, rawProgress > 1 ? rawProgress / 100 : rawProgress));
-      // Sherpa may return one callback for several punctuation groups. Map the
-      // callback's cumulative progress back to every text group represented by
-      // that PCM instead of blindly consuming exactly one group per callback.
-      // The latter truncated the visible character timeline while the full
-      // sentence audio kept playing.
-      const progressEnd = normalizedProgress >= 0.995
-        ? progressTexts.length
-        : Math.max(progressIndex + 1, Math.ceil(normalizedProgress * progressTexts.length));
-      const chunkText = progressTexts.slice(progressIndex, Math.max(progressIndex + 1, progressEnd)).join("") || text;
-      pendingSamples.push(samples);
-      pendingSampleCount += samples.length;
-      pendingTexts.push(chunkText);
-      pendingProgress = Number(info?.progress) || 0;
-      progressIndex = Math.max(progressIndex + 1, progressEnd);
-      // Tiny 200–350 ms audio buffers force repeated Web Audio fade/restart
-      // cycles. Coalesce them into a stable phrase while retaining the first
-      // sufficiently long callback for low perceived latency.
-      flushPendingChunk(false);
-      return !(key && cancelledTurns.has(key));
-    },
-  });
+  }
   const cancelled = Boolean(key && cancelledTurns.has(key));
-  if (!cancelled) flushPendingChunk(true);
   return {
-    sampleRate: audio.sampleRate || engine.sampleRate,
-    totalSamples: audio.samples?.length || totalSamples,
+    sampleRate: engine.sampleRate,
+    totalSamples,
     streamedSamples: totalSamples,
     chunkCount: emittedChunkIndex,
     cancelled,

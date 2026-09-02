@@ -7,15 +7,17 @@ const assetsDir = path.join(projectRoot, "public", "assets");
 const outputPath = path.resolve(process.argv[2] || path.join(projectRoot, "qa", "viseme-asset-proof.png"));
 const frames = [
   ["CLOSED", "xiaoa-ditto-master-v1.0.3.png"],
-  ["REST", "xiaoa-viseme-rest-v4.png"],
-  ["A", "xiaoa-viseme-a-v4.png"],
-  ["E", "xiaoa-viseme-e-v4.png"],
-  ["O", "xiaoa-viseme-o-v4.png"],
-  ["U", "xiaoa-viseme-u-v4.png"],
-  ["F", "xiaoa-viseme-f-v4.png"],
-  ["L", "xiaoa-viseme-l-v4.png"],
-  ["S", "xiaoa-viseme-s-v4.png"],
-  ["SH", "xiaoa-viseme-sh-v4.png"],
+  ["REST", "xiaoa-viseme-rest-v5.png"],
+  ["A", "xiaoa-viseme-a-v5.png"],
+  ["E", "xiaoa-viseme-e-v5.png"],
+  ["O", "xiaoa-viseme-o-v10.png"],
+  ["U", "xiaoa-viseme-u-v8.png"],
+  ["MBP", "xiaoa-viseme-mbp-v5.png"],
+  ["F", "xiaoa-viseme-f-v5.png"],
+  ["L", "xiaoa-viseme-l-v5.png"],
+  ["NDT", "xiaoa-viseme-ndt-v5.png"],
+  ["S", "xiaoa-viseme-s-v5.png"],
+  ["SH", "xiaoa-viseme-s-v5.png"],
 ];
 
 (async () => {

@@ -1,5 +1,16 @@
 # Design QA
 
+## 2026-09-02 V1.5.7 对话输入与稳定布局修复
+
+- Design Read: 面向 60 岁以上用户的 9:16 站点咨询终端，保留冷白医疗蓝、数字人主视觉和大触控目标，将识别状态、输入文字、麦克风和键盘收拢为一个稳定底部交互区。Taste 参数为 `DESIGN_VARIANCE: 2`、`MOTION_INTENSITY: 1`、`VISUAL_DENSITY: 3`。
+- 保留: 现有小安人物资产、冷白医疗蓝、语音优先与触控回退、快捷业务入口、离线识别和本地播报链路。
+- 增强: 输入框始终展示当前文字；软键盘打开时输入底座完整上移；语音中间文字直接进入主输入框；对话页同时展示用户与小安消息；快捷标签使用独立稳定区域；根画布使用动态视口单位居中适配。
+- 删除: 删除页面顶部与输入框割裂的重复语音识别模块；删除只展示数字人回答的单向对话结构；删除软键盘与输入框发生 2cqw 重叠的定位方式。
+- 重做: 对话内容改为双向消息流，用户消息右对齐、小安消息左对齐；语音状态合并进入底部输入底座；快捷标签不再依赖回答气泡高度定位。
+- 验收状态: Vite 4581 modules 生产构建通过；Sites 4/4；Node 全量 183/183。1280×720 浏览器实测 5:8 画布为 450×720、水平居中 `x=415`；软键盘与输入底座重叠为 0；拼音 `jin` 候选“今天有活动吗”进入主输入框并成功发送；对话页同时出现右侧用户消息和左侧小安消息，快捷标签为独立区域，控制台无 error/warning。真实实体麦克风仍由目标 Windows 设备门禁验证。
+- 用户复核调整: 恢复原顶部语音识别状态条及原底部“声波 + 状态 + 麦克风 + 键盘”底座；保留输入法避让。删除软键盘顶部说明文案，新增“中 / EN”切换，英文模式字母直接上屏。
+- 上下文对话复验: 连续选择“今天站点有什么活动？”和“健康讲堂讲什么？”后消息区保留 4 条历史消息（2 条用户、2 条小安），不再覆盖成单轮两气泡；消息区自动滚动至最新内容。英文模式输入 `h`、`i` 后主输入框值为 `hi`；旧说明行已消失；顶部识别模块可见；控制台 0 error/warning。最终生产构建通过，Node 全量 184/184。
+
 ## 2026-08-31 V1.4.13 单嘴连续过渡与自然眨眼恢复
 
 - Design Read: 保留医疗终端现有人物、机位、5:8 居中画布、适老信息架构与克制可信感，只修复自然眨眼可见性并降低说话口型的逐帧跳变。Taste 参数为 `DESIGN_VARIANCE: 1`、`MOTION_INTENSITY: 2`、`VISUAL_DENSITY: 1`。
@@ -611,3 +622,313 @@ passed
 - 工程证据: 113/113 自动化测试通过；Vite 生产构建通过；流式服务探针首块约 2.20s、精确字符时间戳在首块后约 0.78s返回；取消后不再继续发出 PCM 块。
 - Ditto 对照: 12步/1280 首帧 5.59s、1.46 FPS；8步/768 首帧 4.67s、1.33 FPS；6步/640 首帧 3.03s、1.34 FPS。选择 6步/640 缩短首帧，但由于持续帧率不够，实时展示仍以 PCM 口型为主。
 - Taste 结论: 本轮属于定向演进，不改变信息架构、品牌色、圆角和排版；所有新增动作只表达发声、语义和状态变化，未增加装饰性循环动画。
+# 2026-08-31 V1.5.0 站点咨询顾问本机演示
+
+## Design Read
+
+- 产品与用户：公共竖屏康养站点终端，主要面向 60 岁以上来访者；语音是主入口，触控为完整兜底。
+- 既有语言：保留小安真人数字人、冷青绿色、浅色医疗服务空间、清晰的大字号层级和 Phosphor 图标。
+- 需求来源：蓝湖「大屏数字人-站点咨询顾问.rp / 8.25最终确定稿」整页画布，以及 `public/assets/visual-target-premium.png`。
+- `DESIGN_VARIANCE=3`
+- `MOTION_INTENSITY=3`
+- `VISUAL_DENSITY=5`
+
+## 视觉与需求对照
+
+- 蓝湖整页证据：`docs/requirements/station-advisor/screenshots/lanhu-full-page/lanhu-8.25-final-full-page.png`，画布 `7144 × 5557`。
+- 实现首页：`qa/station-advisor-v1.5.0-home-1200x1920.png`。
+- 同屏比较：`qa/station-advisor-v1.5.0-comparison.png`。
+- 比较结论：数字人身份、正面构图、青绿色主色、浅色服务空间、语音主按钮和适老大字号与视觉基线一致；为承载蓝湖站点咨询需求，首页次入口由单一“健康测评”改为三条站点问题，底部工具条调整为不遮挡内容的顶部紧凑控制区。
+- 可读性：1200 × 1920 目标稿中主标题、主按钮和推荐问题均保持高对比；没有文本压叠、图片拉伸、横向溢出和触控入口裁切。
+
+## Taste 结论
+
+- 保留：小安居中正面形象、冷青绿医疗服务氛围、语音优先、适老字号、白色半透明信息面板。
+- 增强：增加三条机构推荐问题、回答后的会话追问、身份确认告知、脱敏会员卡、积分明细、个人状态清理和独立退出 PIN。
+- 删除：工作人员求助入口、模型思考过程、内部工具状态、疑似会员候选列表、生产后台和 Android 依赖。
+- 重做：把健康评估首页重做为站点咨询首页；把个人信息查询改为“告知—本地演示确认—脱敏结果—主动清理”的确定性状态机。
+
+## 功能验收
+
+- 浏览器真实点击通过：首页 → 今日活动回答。
+- 浏览器真实点击通过：活动回答 → 会员积分 → 身份告知。
+- 浏览器真实点击通过：同意身份确认 → 本地扫描演示 → 会员积分/余额。
+- 首页、音量、大字、退出、取消认证、查看明细、结束个人查询均有可点击状态。
+- 语音演示在 1.8 秒后确定性进入“今天站点有什么活动”回答；不伪装真实 ASR 或生产接口。
+- 个人数据为固定本地 fixture；源码中无 `fetch`、Axios 或 WebSocket 生产连接。
+
+## 工程验收
+
+- `vite build`：通过。
+- `node --test .\\tests\\*.test.mjs`：137/137 通过。
+- 版本一致性：源码版本、产品名、HTML 标题、Electron 产品名和未来 EXE 文件名均由 `1.5.0` 生成。
+- 已验证范围：本机浏览器生产构建和交互流程。
+- 未验证范围：本轮未重新生成或运行便携 EXE；不将浏览器通过描述为打包版运行证明。
+
+final result: passed
+
+# 2026-08-31 V1.5.1 语音自动识别与键盘可编辑双模式
+
+## Design Read
+
+- 产品与用户：公共竖屏康养站点终端，面向 60 岁以上来访者；语音仍是主入口，键盘/屏幕键盘是同一输入框内的等价补充。
+- 既有语言：继续使用小安写实人物、冷青绿色、浅色服务空间、适老大字号和 Phosphor 图标，不改变 V1.5.0 的首页构图与站点问题层级。
+- 交互目标：识别文字先进入可编辑输入框；普通问题短暂倒计时后自动发送，敏感或低置信结果等待明确确认；编辑行为拥有最高优先级。
+- `DESIGN_VARIANCE=2`
+- `MOTION_INTENSITY=3`
+- `VISUAL_DENSITY=5`
+
+## 统一审查结果
+
+- 阻断问题：无。
+- 高优先级问题：无。
+- 中优先级问题：本机 Vite 离线语音入口已进入真实聆听并正确释放麦克风，但本轮没有真人说出完整问题，因此尚未取得“实体拾音 → SenseVoice 文本 → 1.5 秒自动发送”的端到端语音证据；Electron 离线麦克风仍需在新便携包中复验。
+- 低优先级优化：视觉基线为 `941 × 1672`，实现目标为 `1200 × 1920`，人物在实现中采用更近的半身机位；不影响输入与推荐问题可读性，但不能据此给出精确像素还原率。
+- 通过项：目标视口无横向溢出、文字压叠、控件遮挡和素材拉伸；输入、清空、回车、发送、常见问题、身份告知、取消、音量、大字、退出均保持可操作。
+- 交互完成度：浏览器真实操作通过“键盘输入活动问题 → Enter → 活动回答”和“键盘输入会员积分 → Enter → 身份告知”；本机语音服务状态为 `ready:true`、`offline:true`，点击麦克风进入“正在聆听”，点击停止后释放设备并按无声输入进入“没有听到清晰语音”恢复态。
+- 视觉质量：93/100，属于单轮自评；扣分来自视觉基线与目标画幅不同、人物机位更近，以及本轮未取得第二份独立视觉评审。
+- 设计稿还原率：不报告精确百分比。蓝湖为多页面 Axure 整页画布，视觉基线与实现画幅不同；本轮只确认人物身份、冷青绿语言、信息层级和适老触达的一致性。
+- 未检查范围：未重新打包或运行便携 Electron；未用实体麦克风复验自动聆听、离线 ASR、低置信识别和真实 1.5 秒语音自动发送。
+- 是否建议进入下一阶段：建议进入便携 Electron 麦克风与连续语音验收，不建议把浏览器通过描述为成品语音通过。
+
+## 视觉证据与 Taste 结论
+
+- 实现整页：`qa/station-advisor-v1.5.1-hybrid-input-1200x1920.png`，浏览器目标视口 `1200 × 1920`、DPR 1、完整页面截图。
+- 同屏比较：`qa/station-advisor-v1.5.1-comparison.png`，左侧为 `public/assets/visual-target-premium.png`，右侧为 V1.5.1 实现。
+- 保留：小安人物身份、正面视觉焦点、青绿色服务氛围、顶部适老工具、白色半透明信息面板和三条推荐问题。
+- 增强：在语音入口中直接加入可编辑文字、键盘提示、清空、发送、识别状态和确认态，不额外增加第二套问答页面。
+- 删除：V1.5.0 的固定 1.8 秒伪识别演示、独立聆听页、默认浏览器云识别和无条件自动提交。
+- 重做：输入生命周期统一为 `聆听 → 识别 → 可编辑文字 → 普通问题自动发送 / 敏感与低置信确认 → 回答 → 按需恢复聆听`；键盘聚焦同步作废录音、倒计时和迟到结果。
+
+## 工程与运行证据
+
+- `node --test .\tests\*.test.mjs`：142/142 通过。
+- `vite build`：4572 个模块生产构建通过，Sites 本地产物同步生成。
+- `git diff --check`：通过；仅报告仓库既有 Windows 换行提示，无空白错误。
+- 浏览器运行日志：无 warning/error；仅有 Vite 连接 debug 和 React 开发提示 info。
+- 本机离线语音状态：`ready:true`、`provider:sherpa-onnx`、`asrModel:SenseVoice Small INT8`、`offline:true`、缺失模型数 0。
+- 版本一致性：页面标题、产品名、Electron 产品名和构建版本统一为 `1.5.1`。
+- 输入安全：同源本机语音接口是唯一网页网络请求；识别文字、PCM、会员问题不写入 localStorage、sessionStorage 或 console。
+- 并发保护：自动发送同时校验 countdown ID、operation ID、文本修订号、精确文本、当前页面和退出弹层；提交使用同步单次锁；迟到 preview/final 被丢弃。
+
+final result: passed (browser and static integration scope only)
+
+# 2026-08-31 V1.5.2 自动聆听、双输入融合与 TTS 口型恢复
+
+## Design Read
+
+- 产品与用户：公共 9:16 康养站点终端，主要面向 60 岁以上来访者；用户应直接开口或触碰同一输入栏完成咨询，不需要理解“语音模式”和“键盘模式”两套产品结构。
+- 既有语言：保留小安写实人物、冷青绿色、浅色服务空间、顶部适老工具、三条站点推荐问题和清晰的大字号层级；本轮只重构输入控制权、回答播报与数字人口型链路。
+- 交互原则：默认自动聆听，触碰文字即键盘优先，麦克风负责暂停/恢复；回答的文字、声音和口型属于同一 `turn_id`，用户重新开麦可立即打断。
+- `DESIGN_VARIANCE=2`
+- `MOTION_INTENSITY=3`
+- `VISUAL_DENSITY=5`
+
+## Taste 结论
+
+- 保留：小安人物身份与正面机位、冷青绿色服务氛围、适老字号、顶部音量/大字/退出、三条推荐问题、敏感信息先确认和固定本地演示数据。
+- 增强：首次进入即可自动聆听；实时转写和键盘文字进入同一输入栏；键盘聚焦暂停录音；无语音空轮次可自动重试；回答结束后按条件恢复聆听；本地 TTS、Web Audio analyser、Viseme timeline 与面部 rig 重新接入活跃站点页面。
+- 删除：必须先点一次麦克风才能连续对话的隐性门槛；麦克风、输入框、清空和发送四个控件同时争夺主视觉的表单式拼装；无语音后停留在永久错误态；只显示静态头像却标记为正在播报的假动态状态。
+- 重做：输入区重做为输入法式统一控制面；麦克风语义由“开始/停止并识别”改为“暂停/恢复自动聆听”；播报生命周期重做为 `回答文本 → 本机 TTS PCM → 音频时钟 Viseme → 播后闭嘴 → 自动恢复聆听`，新输入同步取消旧媒体和旧 `turn_id`。
+
+## 运行时证据
+
+- 浏览器已验证：本机 Vite 页面 `http://127.0.0.1:4173/` 可复现默认自动聆听、麦克风暂停/恢复、语音/键盘同栏切换、普通提问、敏感确认、无语音后重试、真实本机回答播报、可见口型和播后恢复聆听。
+- 本机语音边界：浏览器开发运行态使用同源离线 SenseVoice/VITS 服务；不启用默认浏览器云语音，不连接生产站点或会员接口。
+- 数字人链路：回答以真实 PCM 作为主时钟，Viseme timeline 决定主要嘴型，AnalyserNode 仅提供受控能量强调；播中重新开麦会取消旧音频源、旧口型时间线和旧轮次。
+- 自动化结果：28 个测试文件、170 项全部通过；Vite 生产构建成功（4579 个模块）；构建产物包含并引用 9 个 Viseme、4 个表情、2 个眨眼与 1 个主肖像资源，缺失、空文件与哈希不一致均为 0；干净新页面控制台 `error/warn` 为 0。
+- 动态近景：浏览器运行态记录到 `sensevoice-character-timestamps` 精确字符时间戳对齐，单轮出现 `CLOSED/A/E/O/U` 等口型，最大 `data-jaw-open=0.65`；播中点击麦克风后旧音频与口型被取消，`data-jaw-open` 回到 0 并自动进入聆听。紧凑回答页的口型画布已与主肖像统一为同一裁切基线，修正了早期动态截图中的脸部重影。
+- 打包 Electron：最终 V1.5.2 便携包已在 `file://.../resources/app.asar` 运行态通过。234 个动态样本观察到 `idle/speaking/settling`、`CLOSED/E/A/U/REST/O`、自然眨眼 `half/closed`、`sensevoice-character-timestamps`、最大下颌开度 0.647；播中真实点击麦克风后下颌回到 `<=0.01`，自动聆听恢复，运行错误、异常和崩溃均为 0。
+- 口型视觉门槛：`10-speaking-full-page.png` 是近景唯一来源；同 ROI 相对闭嘴参考的平均 RGB 绝对差为 9.94，变化样本比例为 25.32%，自动门槛通过，肉眼可见自然开口且无双嘴重影。
+- 自动识别：打包 Electron 使用虚拟麦克风输入真实中文 WAV，无点击、无键盘注入完成自动聆听、离线 SenseVoice 最终转写、约 1.55 秒倒计时和自动提交，Console error 为 0。
+- 验收边界：可表述为“V1.5.2 打包 Electron 软件链路已验证”；虚拟麦克风不证明实体 Realtek 麦克风，PCM/RMS 与 Web Audio 播放不证明扬声器的实际声学输出，30–60 分钟连续运行也尚未执行。Chromium 仅重复报告 `ScriptProcessorNode` 弃用警告，无业务错误。
+
+## 截图证据
+
+- 自动聆听首页整页：`qa/station-advisor-v1.5.2-auto-listen-full-page.png`。
+- 本地 TTS 回答整页：`qa/station-advisor-v1.5.2-speaking-full-page.png`。
+- 本地 TTS 的开口活动近景：`qa/station-advisor-v1.5.2-tts-viseme-open-1200x1356.png`（单张截图仅作状态证据，不替代动态验收；整页状态见上一项）。
+- 与视觉基线同屏比较：`qa/station-advisor-v1.5.2-comparison.png`。
+- 打包 Electron 动态报告：`qa/station-advisor-v1.5.2-electron-final-r4/station-advisor-v1.5.2-electron-report.json`。
+- 打包 Electron 张嘴近景：`qa/station-advisor-v1.5.2-electron-final-r4/10-speaking-mouth-closeup.png`。
+- 虚拟麦克风自动识别报告与整页：`qa/station-advisor-v1.5.2-virtual-mic-asr-r1/`。
+
+final result: passed (browser runtime and packaged Electron software-chain scope); physical audio hardware and soak pending
+
+# 2026-08-31 V1.5.3 键盘触发与底部模块修正
+
+## Design Read
+
+- 产品与用户：本机 Windows 竖屏站点咨询终端，主要面向 60 岁以上来访者；保留自动识别与键盘输入双模式，但同一时刻必须让用户清楚当前由哪种输入方式接管。
+- 既有语言：保留写实小安人物、冷青绿色、顶部适老工具、首页问候和三条推荐问题；本轮只调整底部交互底座及页面边缘连续性。
+- `DESIGN_VARIANCE=2`
+- `MOTION_INTENSITY=2`
+- `VISUAL_DENSITY=4`
+
+## Taste 结论
+
+- 保留：自动聆听、麦克风暂停/恢复、统一输入栏、推荐问题和原数字人口型链路。
+- 增强：键盘成为可见且稳定的显式模式；点击后暂停语音、聚焦输入并请求 Windows 系统屏幕键盘。
+- 删除：底部嵌套硬描边、整页左右阴影竖轨、回答卡片与提示条的竖向强调线。
+- 重做：底部统一为“麦克风 / 状态与输入 / 键盘或发送”三列控制台；键盘与发送占用同一固定槽位，清空留在输入栏内部。
+
+## 验收证据
+
+- 全量测试：`171/171` 通过；Vite 生产构建 `4579` 个模块通过；`git diff --check` 无空白错误。
+- 最终打包诊断：版本 `1.5.3`、`packaged:true`、SenseVoice Small INT8、VITS zh-ll、本地离线语音和两套模型均就绪；诊断与语音自检退出码均为 0。
+- 最终打包 Electron 自动验收：点击真实键盘按钮后输入框获得焦点，组件进入 `is-keyboard`，状态显示“键盘输入”，自动聆听停止；中文输入保留超过 1.9 秒且不会自动提交，右侧固定槽位切换为发送。
+- 系统键盘：验收前关闭旧实例，最终包点击后新启动 `C:\Windows\System32\osk.exe`，窗口标题为“屏幕键盘”；截图保存为 `30-windows-osk.png`。
+- 布局：底部面板与统一输入控制台四边计算样式均为 `0px`，应用画布 `box-shadow:none`；1500 × 2080 整页截图中三条推荐问题均未裁切，页面外侧背景与主画布连续，无竖向硬边或阴影轨。
+- 最终证据目录：`E:\CodexBuilds\DigitalHuman2D-V1.5.3-20260831-final\qa-electron-final-r3\keyboard-layout`。
+- 交付包：`E:\CodexBuilds\DigitalHuman2D-V1.5.3-20260831-final\XiaoAn-Health-Kiosk-1.5.3-x64.exe`，SHA-256 `CC56CCFDA221A454AA8538A7E14C51C0DC3650928DBDFD5C9FE28D96019899D8`。
+
+final result: passed (packaged Electron keyboard, layout and offline speech self-test scope); physical microphone, speaker acoustics and soak remain pending
+
+# 2026-08-31 V1.5.4 参考界面、完整数字人与二级页统一
+
+## Design Read
+
+- 产品与用户：Windows 本机 9:16 康养服务站咨询终端，主要面向中老年来访者；页面以自动语音为主、键盘为并行备用输入。
+- 视觉基准：`docs/requirements/station-advisor/screenshots/reference-v1.5.4/source-interface.png`，目标视口 `942 × 1670`。
+- 设计方向：冷白医疗蓝背景、左侧识别与内容、右侧完整数字人、底部单一悬浮输入舱；二级页不得切换成另一套卡片后台界面。
+- `DESIGN_VARIANCE=5`
+- `MOTION_INTENSITY=3`
+- `VISUAL_DENSITY=3`
+
+## Taste 结论
+
+- 保留：现有小安身份、原本地 TTS、Web Audio analyser、Viseme timeline、本地口型与眨眼状态机、自动识别与键盘双模式。
+- 增强：以现有小安为身份参考向下扩展全身医护形象，首页与全部二级页从头到鞋完整展示；动态口型和眨眼继续以原面部 rig 的局部补丁叠加。
+- 删除：回答页紧凑半身头像、授权/扫码/会员页无数字人整板页面、二次确认/倒计时、顶部大面积空白和整页竖向硬边。
+- 重做：首页欢迎语和回答标题改为连续描边、右侧双层尖尾的完整对话气泡；咨询、授权、扫码和会员结果共用右侧人物安全区和顶部状态胶囊。
+
+## 浏览器运行证据
+
+- `942 × 1670` 首页最终整页：`qa/station-advisor-v1.5.4-redesign/16-home-final-outlined-bubble-942x1670.png`。
+- 回答页最终整页：`qa/station-advisor-v1.5.4-redesign/28-conversation-final-outlined-bubble-942x1670.png`。
+- 授权、扫码、会员结果：`33-consent-final-fullbody-942x1670.png`、`42-scan-final-fullbody-942x1670.png`、`52-member-final-fullbody-942x1670.png`。
+- 键盘态：`82-keyboard-final-fullbody-942x1670.png`；真实点击后输入框焦点为 `advisor-question-input`、`data-voice-state=editing`、顶部状态为“键盘输入”。
+- 动态口型：`25-aligned-mouth-frame-fullbody-942x1670.png`，运行采样为 `speaking:true`、Viseme `E`、`jaw-open=0.1139`；口型补丁位于实际嘴部。
+- 动态眨眼：`27-aligned-blink-frame-fullbody-942x1670.png`，运行采样为 `expression=blink`、`phase=closed`；闭眼补丁位于实际眼部。
+- 最终同屏比较：`qa/station-advisor-v1.5.4-redesign/93-reference-final-outlined-bubble-comparison-1884x1670.png`；左侧为原始参考图，右侧为最终首页，结构、从头到鞋的人物完整度、连续白色描边、柔和阴影、右侧双层尖尾、快捷入口和底部输入舱已逐项比对。
+- 浏览器 Console warning/error：0；键盘文字提交后进入回答页并得到确定性站点服务回答。
+
+## Packaged Electron 验收
+
+- V1.5.4 打包 Electron 验收结果为 `PASS`；窗口标题为“小安站点咨询顾问 V1.5.4”，`packaged:true`、运行时版本 `1.5.4`，页面从 `file://.../win-unpacked/resources/app.asar/dist/client/index.html` 加载。
+- 键盘按钮真实点击通过：组件进入 `is-keyboard`，状态显示“键盘输入”，自动聆听停止，输入框获得焦点；输入“请问今天几点可以做健康评估”后文字保持在当前页面且发送按钮可见，没有被误自动提交。
+- Windows 触摸键盘通过项目桥接启动；当前观察到的是 `TabTip.exe`，不是 `osk.exe`。V1.5.3 的 OSK 记录仅作为历史版本证据，不代表 V1.5.4 当前验收结果。
+- 本地语音服务为 `ready:true`、`offline:true`，Provider 为 `sherpa-onnx`，ASR 为 `SenseVoice Small INT8`，TTS 为 `VITS zh-ll default female voice`，缺失模型为 0。
+- DeepSeek 本机加密配置读取状态为 `aiConfigured:true`。真实 DeepSeek SSE 流式调用已成功完成；根据客户端成功路径可判断为 2xx，但未单独保留原始 HTTP 200 响应证据。
+- 控制台 warning 0、error 0、exception 0、crash 0；完整报告：`E:\CodexBuilds\DigitalHuman2D-V1.5.4-20260831-final\qa-electron-final\keyboard-layout\station-advisor-v1.5.4-keyboard-layout-report.json`。
+- 报告中的外部 Avatar GPU 状态为 `ready:false`。这不构成本机 DigitalHuman2D 演示失败，因为当前版本使用本地 2DHuman 面部驱动、口型和眨眼；外部 GPU 云服务连接不在本轮本机演示通过范围内。
+
+## 自动化与边界
+
+- 全量测试：`173/173` 通过；包含语音最终结果立即单次发送、Conversation 非 compact、全部二级流程只复用一个 full AvatarStage 的结构断言。
+- 生产构建：Vite `4579` 个模块通过。
+- 完整数字人口型和眨眼画面对齐已经由 `25-aligned-mouth-frame-fullbody-942x1670.png` 与 `27-aligned-blink-frame-fullbody-942x1670.png` 验证；这些是浏览器运行态动态帧证据，打包报告另行验证应用、键盘和本地语音运行状态。
+- 仍未验证：实体设备真实麦克风拾音效果、真实扬声器播放音量与声学效果、长时间连续运行稳定性、外部 Avatar GPU 云服务连接。
+
+final result: passed (browser runtime, final visual comparison, interaction, dynamic local 2DHuman and packaged Electron software-chain scope); physical audio hardware, soak and external Avatar GPU remain pending
+
+# 2026-08-31 V1.5.5 桌面人物、场景与扩展屏修复
+
+## 用户反馈与根因
+
+- 用户现场反馈使 V1.5.4 的桌面 PASS 失效：网页预览正常，但打包 Electron 中人物缺失，且未看到说话和口型。
+- `file://.../app.asar/dist/client/assets/xiaoa-fullbody-extension-v1.0.0.png` 在 V1.5.4 中 `naturalWidth=0`；根因是 `copyPublicDir:false` 时，Vite 的显式桌面资源清单漏掉了完整人物图。
+- 原验收仅覆盖键盘与布局，没有把人物资源加载、真实 TTS 播放和动态口型列为门槛。
+
+## 修复结果
+
+- V1.5.5 将完整人物图加入桌面资源清单，并新增打包运行态验收。
+- 撤销孤立、塑料感较强的圆形装饰，改为融入背景的医疗蓝柔光弧线；欢迎对话框继续使用连续白色描边与双层尖尾。
+- 扩展屏外围使用同场景模糊延展背景，9:16 交互画布两侧使用渐隐融合，消除 1500 × 2080 窗口中的硬边且不拉伸人物。
+
+## Packaged Electron 证据
+
+- 目标：`E:\CodexBuilds\DigitalHuman2D-V1.5.5-20260831-final-extended\win-unpacked\小安站点咨询顾问 V1.5.5.exe`。
+- `packaged:true`、版本 `1.5.5`；完整人物图与扩展屏背景图均加载成功，背景覆盖整个窗口，宽屏边缘渐隐生效。
+- 真实点击“今日活动”后，本地 TTS 的 `speaking` 状态被连续采样 72 次并正常结束；Viseme 覆盖 `CLOSED / A / E / U / REST / O`，最大下颌开度 `0.619`、最大嘴部开度 `0.818`。
+- 首页截图：`E:\CodexBuilds\DigitalHuman2D-V1.5.5-20260831-final-extended\qa-electron-final\runtime\00-home-person-loaded.png`。
+- 真实说话截图：`E:\CodexBuilds\DigitalHuman2D-V1.5.5-20260831-final-extended\qa-electron-final\runtime\10-real-tts-speaking.png`。
+- 验收报告：`E:\CodexBuilds\DigitalHuman2D-V1.5.5-20260831-final-extended\qa-electron-final\runtime\station-advisor-v1.5.5-runtime-report.json`，结果 `PASS`、failures 0。
+
+## 自动化与边界
+
+- 全量测试 `173/173` 通过；Vite 生产构建 `4579` 个模块通过。
+- 已验证的是本机软件播放链路、AudioContext 播放状态、Viseme/下颌动态和打包资源加载；实体扩展屏的最终观感、扬声器实际声压、实体麦克风拾音和长时间运行仍需现场验收。
+
+final result: passed (packaged Electron full-body asset, extended-background coverage, real local TTS state and dynamic viseme scope); physical display and audio hardware remain pending
+
+# 2026-09-02 V1.5.7 上下文对话、动态业务入口与识别状态整合
+
+## Design Read
+
+- 产品与用户：9:16 康养站点终端，用户需要在持续对话中确认自己说了什么、看到小安的连续回答，并能从当前回答进入匹配的业务智能体。
+- 设计方向：维持原有左侧内容、右侧人物比例；聊天记录最大化使用左侧纵向空间，不以固定标签栏截断上下文。
+- `DESIGN_VARIANCE=2`、`MOTION_INTENSITY=1`、`VISUAL_DENSITY=3`。
+
+## Taste 结论
+
+- 保留：首页顶部语音识别条、原底部声波/状态/麦克风/键盘底座、右侧完整数字人和冷白医疗蓝视觉。
+- 增强：识别预览缩短刷新间隔；识别中的内容在对话页显示为临时用户气泡；上下文消息持续累积并自动滚动。
+- 删除：固定在聊天区底部、持续占用空间的业务标签栏；中文键盘说明行。
+- 重做：业务入口改为由当前小安回复携带的动态智能体标签；积分查询改为先展示识别内容和回答，再进入授权流程；对话流恢复为左侧 `55.8cqw` 内容栏，避免覆盖人物。
+
+## 自动化证据与边界
+
+- Vite 生产构建通过，转换 `4581` 个模块；Sites 构建产物生成成功。
+- Node 全量测试 `184/184` 通过；新增结构断言确保对话页没有独立顶部识别条，识别状态进入用户气泡，业务入口位于回答气泡内。
+- 实体 Windows 麦克风的端到端识别首字延迟、现场声学与长时间运行仍需目标设备验收，不能由本机静态与自动化测试替代。
+
+final result: passed (frontend layout, contextual chat, transient recognition bubble, dynamic agent entries and automated regression scope); physical microphone latency remains pending
+
+# 2026-09-02 V1.5.7 Harness M1 业务执行接线
+
+## Design Read
+
+- 产品与用户：面向 60 岁以上用户的 9:16 康养站点触控终端。
+- 本轮范围：只把站点业务问答切换到统一 Agent Harness，不修改布局、样式、素材、字号、动效或操作入口。
+- `DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+
+## Taste 结论
+
+- 保留：既有冷白医疗蓝视觉、左右人物与消息比例、语音和键盘共用输入、消息气泡、动态业务入口及本地 TTS/口型链。
+- 增强：助餐时间、健康讲堂和八段锦具体问题由 Harness 的结构化工具事实生成回答；新请求会取消旧 Agent run，个人数据先经过确定性权限门禁。
+- 删除：不删除任何可见界面元素；执行层停止把具体助餐和活动问题降级成宽泛固定回答。
+- 重做：不重做视觉组件；仅将业务回答的数据来源从前端硬编码路由替换为 `agent:turn`，无 Harness 或调用失败时保留原回答作为回退。
+
+## 自动化与 Electron 证据
+
+- Harness 专项测试 `7/7` 通过；Node 全量回归 `192/192` 通过。
+- Vite 生产构建通过，转换 `4581` 个模块；Sites 构建产物生成成功。
+- Electron `--harness-self-test` 返回 `ok:true`，验证站点公开查询和会员认证门禁。
+- 真实 Electron GUI/CDP 验收：输入“助餐服务几点开始”，页面显示“助餐服务时间是十一点半到十三点，地点在一楼助餐区”，报告 `qa/harness-electron-20260902/report.json` 为 `PASS`、failures 0，截图为 `qa/harness-electron-20260902/harness-meal-answer.png`。
+- 首轮 GUI 验收发现数字时间触发本地 TTS OOV；已改为中文时间播报并复验，第二轮控制台无该 OOV 输出。
+- 未验证：Windows packaged Electron、真实远程 MCP、模型动态多工具规划、真实会员/身份/权限数据源和目标实体设备。
+
+final result: passed (Harness M1 local Agent Runtime, policy, tool execution, frontend routing and unpacked macOS Electron GUI scope); packaged Windows, remote MCP, model planner and production data remain pending
+
+# 2026-09-02 V1.5.7 Harness M2 隐私安全会话记忆
+
+## Design Read
+
+- 本轮只增加同一咨询会话的短期上下文与结束会话清除行为，不新增可见控件、不改变老人用户已有操作路径。
+- `DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+
+## 隐私边界
+
+- 记忆仅存在于 Electron 主进程内存：最多 64 个会话、每会话 8 轮、空闲 30 分钟自动过期，不写文件、数据库、遥测或云端。
+- 公开问答保留受限长度文本供后续规划；个人工具调用只保留 intent、status、时间和 sensitive 标识，不保留问题、回答、actor、subject token、工具输入或结果。
+- 返回首页或结束个人查询时，前端调用 `agent:clear-session`；应用退出后进程内存自然销毁。
+- 长期记忆尚未启用，需要另行实现明确授权、字段白名单、保留期限及用户查看/删除能力。
+
+## 自动化与 Electron 证据
+
+- Harness 专项测试 `10/10`、Node 全量回归 `195/195` 通过；Vite 生产构建 `4581` modules 与 Sites 构建通过。
+- Electron `--harness-self-test` 返回 `ok:true`、`mode:session_only`、`persistent:false`、`sensitiveRedacted:true`。
+- 真实 Electron GUI/CDP 验收验证 UI 问答写入同一会话、IPC 主动清除后 turns 为 0；`qa/harness-memory-electron-20260902/report.json` 为 `PASS`、failures 0。
+
+final result: passed (Harness M2 bounded in-memory session context, sensitive redaction, expiry, explicit clear and unpacked macOS Electron GUI scope); durable consented memory, packaged Windows and production identity data remain pending

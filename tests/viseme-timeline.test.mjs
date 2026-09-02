@@ -4,7 +4,7 @@ import test from "node:test";
 
 const require = createRequire(import.meta.url);
 const fs = require("node:fs");
-const { buildVisemeUnits, createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, initialViseme, splitTtsProgressText, vowelViseme, vowelVisemes } = require("../electron/viseme-timeline.cjs");
+const { buildVisemeUnits, createAlignedVisemes, createNativeDurationVisemes, createTimedVisemes, initialViseme, splitTtsProgressText, splitTtsStreamText, vowelViseme, vowelVisemes } = require("../electron/viseme-timeline.cjs");
 const { extractNativeDurationAlignment, nativeDurationCapability } = require("../electron/vits-duration-contract.cjs");
 
 test("streamed PCM batches retain only their matching spoken clauses", () => {
@@ -15,10 +15,22 @@ test("streamed PCM batches retain only their matching spoken clauses", () => {
   assert.deepEqual(splitTtsProgressText("一句完整回答。", 2), ["一句完整回答。"]);
 });
 
-test("Mandarin initials cover the complete ten-shape mouth library", () => {
-  assert.equal(initialViseme(["ㄅ", "ㄚ"]), "CLOSED");
+test("offline TTS stream planning merges a short greeting and balances long Mandarin clauses", () => {
+  const text = "您好，我是小安。现在连续检查鼻部锁定、口周肤色、自然口型、下巴同步以及动态过渡是否稳定流畅。请您稍等一下。";
+  const chunks = splitTtsStreamText(text, { minChars: 10, maxChars: 24 });
+  assert.deepEqual(chunks, [
+    "您好，我是小安。现在连续检查鼻部锁定、口周肤色、",
+    "自然口型、下巴同步以及动态过渡是否稳定流畅。",
+    "请您稍等一下。",
+  ]);
+  assert.equal(chunks.join(""), text);
+});
+
+test("Mandarin initials cover the complete twelve-shape mouth library", () => {
+  assert.equal(initialViseme(["ㄅ", "ㄚ"]), "MBP");
   assert.equal(initialViseme(["f", "a"]), "F");
   assert.equal(initialViseme(["ㄌ", "ㄜ"]), "L");
+  assert.equal(initialViseme(["ㄋ", "ㄚ"]), "NDT");
   assert.equal(initialViseme(["x", "iao"]), "S");
   assert.equal(initialViseme(["sh", "ir"]), "SH");
   assert.equal(vowelViseme(["w", "o"]), "O");
@@ -168,7 +180,7 @@ test("VITS native phoneme durations take precedence when a compatible binding ex
   const samples = new Float32Array(5280);
   samples.fill(0.1);
   const events = createNativeDurationVisemes("八知", new Map(), samples, 16000, alignment);
-  assert.deepEqual(events.map((event) => event.shape), ["CLOSED", "A", "SH", "E", "CLOSED"]);
+  assert.deepEqual(events.map((event) => event.shape), ["CLOSED", "MBP", "A", "SH", "E", "CLOSED"]);
   assert.ok(events.every((event, index) => index === 0 || event.timeMs > events[index - 1].timeMs));
 });
 

@@ -1,0 +1,126 @@
+.station-advisor-digital-human {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform: none;
+  transform-origin: 50% 74%;
+  animation: none;
+  will-change: auto;
+}
+
+.station-advisor-digital-human.is-speaking { animation: none; }
+
+.station-advisor-digital-human .station-advisor-digital-human__image,
+.station-advisor-digital-human .station-advisor-digital-human__breath-frame,
+.station-advisor-digital-human .station-advisor-digital-human__expression-frame,
+.station-advisor-digital-human .station-advisor-digital-human__blink-frame,
+.station-advisor-digital-human .station-advisor-digital-human__local-rig {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: 50% 0;
+  pointer-events: none;
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__image {
+  z-index: 1;
+  filter: saturate(.97) contrast(1.01);
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__breath-frame {
+  z-index: 2;
+  filter: saturate(.97) contrast(1.01);
+  will-change: transform;
+  transform: translate3d(0, var(--chest-rise, 0cqw), 0) scaleX(var(--chest-scale-x, 1)) scaleY(var(--chest-scale-y, 1));
+  transform-origin: 50% 88%;
+  mask-image: linear-gradient(to bottom, transparent 0, transparent 76cqw, rgba(0,0,0,.1) 80cqw, rgba(0,0,0,.7) 86cqw, #000 92cqw, #000 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, transparent 76cqw, rgba(0,0,0,.1) 80cqw, rgba(0,0,0,.7) 86cqw, #000 92cqw, #000 100%);
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__local-rig {
+  z-index: 7;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.station-advisor-digital-human.has-local-rig .station-advisor-digital-human__local-rig {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* The canvas and portrait share identical source dimensions. Keep the same
+   crop in both stage sizes so the mouth and chin patch cannot drift. */
+.advisor-avatar-stage.is-compact .station-advisor-digital-human__local-rig {
+  object-position: 50% 0;
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__expression-frame {
+  z-index: 3;
+  opacity: 0;
+  filter: none;
+  transition: opacity 180ms cubic-bezier(.22, .72, .25, 1);
+  mask-image:
+    radial-gradient(ellipse 7.6cqw 5.7cqw at 44.2cqw 39.75cqw, #000 70%, rgba(0,0,0,.94) 82%, transparent 100%),
+    radial-gradient(ellipse 8.2cqw 5.9cqw at 56cqw 39.75cqw, #000 70%, rgba(0,0,0,.94) 82%, transparent 100%);
+  -webkit-mask-image:
+    radial-gradient(ellipse 7.6cqw 5.7cqw at 44.2cqw 39.75cqw, #000 70%, rgba(0,0,0,.94) 82%, transparent 100%),
+    radial-gradient(ellipse 8.2cqw 5.9cqw at 56cqw 39.75cqw, #000 70%, rgba(0,0,0,.94) 82%, transparent 100%);
+}
+
+.station-advisor-digital-human[data-semantic-expression="smile"] .station-advisor-digital-human__expression-frame--smile,
+.station-advisor-digital-human[data-semantic-expression="concern"] .station-advisor-digital-human__expression-frame--concern,
+.station-advisor-digital-human[data-semantic-expression="encourage"] .station-advisor-digital-human__expression-frame--encourage,
+.station-advisor-digital-human[data-semantic-expression="listening"] .station-advisor-digital-human__expression-frame--listening {
+  opacity: var(--expression-strength, .46);
+}
+
+/* Neutral answers still need a living face. Reuse the restrained encourage
+   eyes/cheeks at a low computed strength; speech energy cannot pump it. */
+.station-advisor-digital-human[data-speaking="true"][data-semantic-expression="neutral"] .station-advisor-digital-human__expression-frame--encourage {
+  opacity: var(--expression-strength, .16);
+}
+
+.station-advisor-digital-human[data-expression="blink"] .station-advisor-digital-human__expression-frame {
+  transition: none;
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__blink-frame {
+  z-index: 4;
+  height: auto;
+  opacity: 0;
+  filter: none;
+  will-change: opacity;
+  mask-image: radial-gradient(ellipse 5.05cqw 1.78cqw at 44.2cqw 41.45cqw, #000 72%, rgba(0,0,0,.96) 84%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 5.05cqw 1.78cqw at 44.2cqw 41.45cqw, #000 72%, rgba(0,0,0,.96) 84%, transparent 100%);
+}
+
+.station-advisor-digital-human .station-advisor-digital-human__blink-frame--screen-right {
+  mask-image: radial-gradient(ellipse 4.1cqw 1.75cqw at 52.9cqw 41.1cqw, #000 72%, rgba(0,0,0,.96) 84%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 4.1cqw 1.75cqw at 52.9cqw 41.1cqw, #000 72%, rgba(0,0,0,.96) 84%, transparent 100%);
+}
+
+.station-advisor-digital-human[data-blink-phase="half"] .station-advisor-digital-human__blink-frame--half,
+.station-advisor-digital-human[data-blink-phase="closed"] .station-advisor-digital-human__blink-frame--closed {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-advisor-digital-human,
+  .station-advisor-digital-human.is-speaking {
+    transform: none !important;
+    will-change: auto;
+  }
+
+  .station-advisor-digital-human .station-advisor-digital-human__breath-frame {
+    transform: none !important;
+  }
+
+  .station-advisor-digital-human .station-advisor-digital-human__expression-frame {
+    display: none;
+  }
+}

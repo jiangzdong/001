@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安数字健康管理师 V1.4.13",
-  "version": "1.4.13",
+  "productName": "小安站点咨询顾问 V1.5.7",
+  "version": "1.5.7",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -27,6 +27,7 @@
     "test:avatar-realtime": "node --test tests/avatar-realtime.test.mjs tests/streaming-speech.test.mjs",
     "test:controls": "node --test tests/controls-cleanup.test.mjs",
     "test:assessment": "node --test tests/assessment-understanding.test.mjs tests/assessment-flow.test.mjs tests/skill-runtime.test.mjs tests/personalized-plan.test.mjs",
+    "test:harness": "node --test tests/harness-runtime.test.mjs",
     "ditto:setup-local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-ditto-local-gpu.ps1",
     "ditto:setup-trt": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-ditto-tensorrt.ps1",
     "ditto:download-local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-ditto-models-xet.ps1",
@@ -37,7 +38,9 @@
     "ditto:tunnel": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-ditto-tunnel.ps1",
     "desktop": "cross-env VITE_DEV_SERVER_URL=http://localhost:4173 electron . --windowed",
     "desktop:full": "cross-env VITE_DEV_SERVER_URL=http://localhost:4173 electron .",
-    "dist:win": "pnpm run build && electron-builder --win portable --x64"
+    "dist:win": "pnpm run build && electron-builder --win portable --x64",
+    "dist:mac": "pnpm run build && electron-builder --mac --arm64",
+    "dist:mac:dir": "pnpm run build && electron-builder --mac dir --arm64"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",
@@ -54,7 +57,7 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安数字健康管理师 V1.4.13",
+    "productName": "小安站点咨询顾问 V1.5.7",
     "asar": true,
     "directories": {
       "output": "release"
@@ -92,6 +95,18 @@
       ],
       "artifactName": "XiaoAn-Health-Kiosk-${version}-${arch}.${ext}",
       "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "XiaoAn-Health-Kiosk-${version}-${arch}.${ext}",
+      "identity": null
     },
     "portable": {
       "artifactName": "XiaoAn-Health-Kiosk-${version}-${arch}.${ext}"

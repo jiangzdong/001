@@ -4,6 +4,7 @@ const path = require("path");
 
 const voices = [{ id: "zh-ll-2", label: "小安默认女声", detail: "普通话女声", modelId: "zh-ll", sid: 2 }];
 const defaultVoiceId = "zh-ll-2";
+const finalOfflineAsrProvider = "sherpa-onnx-sensevoice-local";
 
 function createSpeechService({ app }) {
   const modelsRoot = app.isPackaged
@@ -16,7 +17,11 @@ function createSpeechService({ app }) {
     "sherpa-onnx-vits-zh-ll/tokens.txt",
     "sherpa-onnx-vits-zh-ll/lexicon.txt",
   ];
-  const ttsWorkerCount = 2;
+  // One warmed worker serially prefetches upcoming segments while the current
+  // PCM buffer is playing. Running two VITS instances at once saturated the
+  // 6-core kiosk and caused visible compositor stalls without improving the
+  // first audible chunk.
+  const ttsWorkerCount = 1;
   const ttsWorkers = Array(ttsWorkerCount).fill(undefined);
   let alignmentWorker;
   let sequence = 0;
@@ -35,10 +40,10 @@ function createSpeechService({ app }) {
       ready: missing.length === 0,
       provider: "sherpa-onnx",
       asrModel: "SenseVoice Small INT8",
-      asrPreview: { mode: "rolling-offline", intervalMs: 1800, maxWindowSeconds: 10 },
-      lipAlignment: { mode: "sensevoice-character-pcm-timeline", provider: "SenseVoice character timestamps + VITS lexicon", fallback: "VITS lexicon + PCM envelope" },
+      asrPreview: { mode: "rolling-offline", intervalMs: 900, maxWindowSeconds: 8 },
+      lipAlignment: { mode: "vits-lexicon-pcm-live", provider: "VITS lexicon + PCM envelope", offlineAudit: "SenseVoice character timestamps" },
       ttsModel: "VITS zh-ll default female voice",
-      ttsStreaming: { enabled: true, mode: "progressive-pcm-chunks", cancellation: true, parallelPrefetch: ttsWorkerCount, minimumChunkMs: 620 },
+      ttsStreaming: { enabled: true, mode: "balanced-progressive-pcm-chunks", cancellation: true, parallelPrefetch: ttsWorkerCount, chunkChars: { minimum: 10, maximum: 24 } },
       voices,
       offline: true,
       warmedModels: [...warmedModels],
@@ -71,7 +76,10 @@ function createSpeechService({ app }) {
     const currentStatus = status();
     if (!currentStatus.ready) throw new Error(`缺少离线语音模型：${currentStatus.missing.join(", ")}`);
     const created = new Worker(path.join(__dirname, "speech-worker.cjs"), {
-      workerData: { modelsRoot, role, ttsThreads: 3, alignmentThreads: 2 },
+      // Two VITS threads keep the next PCM chunk buffered without a multi-second
+      // audio gap. Live playback no longer runs SenseVoice alignment in parallel,
+      // leaving enough CPU headroom for the 4K renderer.
+      workerData: { modelsRoot, role, ttsThreads: 2, alignmentThreads: 1 },
     });
     const roleKey = role === "alignment" ? "alignment" : `tts:${slot}`;
     if (role === "alignment") alignmentWorker = created; else ttsWorkers[slot] = created;
@@ -116,7 +124,9 @@ function createSpeechService({ app }) {
     if (samples.length > 16000 * 45) return { ok: false, message: "单次说话请控制在四十五秒以内" };
     try {
       const result = await request("recognize", { samples, sampleRate: input?.sampleRate || 16000 }, 60000, [samples.buffer]);
-      return result.text ? { ok: true, text: result.text } : { ok: false, message: "没有听清，请再说一次或点击屏幕" };
+      return result.text
+        ? { ok: true, text: result.text, provider: finalOfflineAsrProvider, trustedFinal: true }
+        : { ok: false, message: "没有听清，请再说一次或点击屏幕" };
     } catch (error) {
       return { ok: false, message: error?.message || "离线语音识别暂时不可用" };
     }
@@ -161,32 +171,6 @@ function createSpeechService({ app }) {
       const voice = voices.find((item) => item.id === input?.voiceId) || voices.find((item) => item.id === defaultVoiceId);
       let firstChunkMs = null;
       const startedAt = performance.now();
-      let alignmentTail = Promise.resolve();
-      const alignAndDispatch = (chunk) => {
-        alignmentTail = alignmentTail.then(async () => {
-          if (turnId && cancelledTurns.has(turnId)) return;
-          const refined = await align({
-            text: chunk?.text,
-            samples: chunk?.samples,
-            sampleRate: chunk?.sampleRate,
-            turnId,
-          });
-          if (turnId && cancelledTurns.has(turnId)) return;
-          const output = refined?.ok
-            ? {
-                ...chunk,
-                visemes: refined.visemes,
-                alignment: {
-                  ...chunk.alignment,
-                  ...refined.alignment,
-                  nativeDurationStatus: chunk.alignment?.nativeDurationStatus || "upstream-api-unavailable",
-                },
-              }
-            : chunk;
-          if (firstChunkMs == null) firstChunkMs = performance.now() - startedAt;
-          onChunk?.(output);
-        });
-      };
       const result = await request(
         "synthesize-stream",
         { text, speed: input?.speed, modelId: voice.modelId, sid: voice.sid, turnId },
@@ -194,15 +178,14 @@ function createSpeechService({ app }) {
         [],
         (chunk) => {
           if (turnId && cancelledTurns.has(turnId)) return;
-          // Refine each already-generated PCM chunk on the dedicated alignment
-          // worker. The TTS workers remain free to prefetch the next segment,
-          // while the renderer receives text timestamps tied to the exact
-          // samples it is about to play.
-          alignAndDispatch(chunk);
+          // The worker already returns a monotonic VITS lexicon + PCM envelope
+          // timeline tied to this exact sample buffer. Dispatch it immediately;
+          // concurrent SenseVoice inference caused visible 4K compositor stalls.
+          if (firstChunkMs == null) firstChunkMs = performance.now() - startedAt;
+          onChunk?.(chunk);
         },
         workerSlot,
       );
-      await alignmentTail;
       warmedModels.add(voice.modelId);
       if (result?.cancelled || (turnId && cancelledTurns.has(turnId))) return { ok: false, cancelled: true, message: "语音请求已取消", firstChunkMs };
       return { ok: true, ...result, firstChunkMs };

@@ -39,10 +39,10 @@ export function nextBlinkDelay(randomValue = 0.5, { mood = "neutral", speaking =
 
 export function createBlinkProfile(randomValue = 0.5, { speaking = false, doubleBlink = false } = {}) {
   const random = clamp01(randomValue);
-  if (doubleBlink) return { closeMs: 92 + random * 18, holdMs: 36 + random * 14, openMs: 142 + random * 34 };
+  if (doubleBlink) return { closeMs: 92 + random * 18, holdMs: 60 + random * 20, openMs: 142 + random * 34 };
   return {
     closeMs: 112 + random * 28,
-    holdMs: 48 + (1 - random) * 24,
+    holdMs: 88 + (1 - random) * 24,
     openMs: 178 + random * 48 + (speaking ? 12 : 0),
   };
 }
@@ -90,8 +90,8 @@ export function sampleSpeechProsody(timeline, elapsedMs) {
 
 export function sampleExpressionStrength({ mood = "neutral", speaking = false, elapsedMs = 0, energy = 0, prosody = {} } = {}) {
   const normalizedMood = ["smile", "concern", "encourage", "listening"].includes(mood) ? mood : "neutral";
-  if (normalizedMood === "neutral") return 0;
-  const base = { smile: 0.54, concern: 0.63, encourage: 0.57, listening: 0.5 }[normalizedMood];
+  if (normalizedMood === "neutral" && !speaking) return 0;
+  const base = { neutral: 0.18, smile: 0.54, concern: 0.63, encourage: 0.57, listening: 0.5 }[normalizedMood];
   if (!speaking) return normalizedMood === "listening" ? 0.45 : Math.min(0.42, base);
   const onset = clamp01(Number(elapsedMs) / 640);
   const easedOnset = onset * onset * (3 - 2 * onset);
@@ -147,25 +147,37 @@ export function sampleUpperBodyPose({ elapsedMs = 0, speaking = false, motion = 
 export function advanceVisemeBlend(state, desiredLabel, timestamp, durations = {}) {
   const now = Math.max(0, Number(timestamp) || 0);
   const desired = String(desiredLabel || "CLOSED");
-  const openingMs = Math.max(1, Number(durations.openingMs) || 96);
-  const changingMs = Math.max(1, Number(durations.changingMs) || 108);
-  const closingMs = Math.max(1, Number(durations.closingMs) || 122);
+  // A photographic mouth needs a longer perceptual transition than a vector
+  // blendshape. These values still fit inside Mandarin coarticulation lead-in,
+  // but provide roughly 9-12 production frames at 60 fps instead of a card-flip change.
+  const openingMs = Math.max(1, Number(durations.openingMs) || 146);
+  const changingMs = Math.max(1, Number(durations.changingMs) || 168);
+  const closingMs = Math.max(1, Number(durations.closingMs) || 188);
   let next = state && typeof state === "object"
-    ? { from: String(state.from || "CLOSED"), to: String(state.to || "CLOSED"), startedAt: Number(state.startedAt) || 0, durationMs: Math.max(1, Number(state.durationMs) || changingMs) }
-    : { from: "CLOSED", to: "CLOSED", startedAt: now, durationMs: changingMs };
+    ? { from: String(state.from || "CLOSED"), to: String(state.to || "CLOSED"), startedAt: Number(state.startedAt) || 0, durationMs: Math.max(1, Number(state.durationMs) || changingMs), pending: state.pending ? String(state.pending) : "" }
+    : { from: "CLOSED", to: "CLOSED", startedAt: now, durationMs: changingMs, pending: "" };
 
   const previousRaw = clamp01((now - next.startedAt) / next.durationMs);
   const previousMix = previousRaw * previousRaw * (3 - 2 * previousRaw);
-  if (desired !== next.to) {
-    const dominant = previousMix < 0.5 ? next.from : next.to;
-    next = {
-      from: dominant,
-      to: desired,
-      startedAt: now,
-      durationMs: desired === "CLOSED" ? closingMs : dominant === "CLOSED" ? openingMs : changingMs,
-    };
+  const previousComplete = next.from === next.to || previousRaw >= 0.999;
+  if (!previousComplete) {
+    // Do not reset a half-rendered photographic dissolve when the next phoneme
+    // arrives. Retain only the latest requested pose and begin it after the
+    // current pair completes; this is a visual low-pass, not extra audio lag.
+    next.pending = desired === next.to ? "" : desired;
+  } else {
+    const queued = desired !== next.to ? desired : next.pending;
+    if (queued && queued !== next.to) {
+      const dominant = next.to;
+      next = {
+        from: dominant,
+        to: queued,
+        startedAt: now,
+        durationMs: queued === "CLOSED" ? closingMs : dominant === "CLOSED" ? openingMs : changingMs,
+        pending: "",
+      };
+    } else next.pending = "";
   }
-
   const raw = clamp01((now - next.startedAt) / next.durationMs);
   let mix = raw * raw * (3 - 2 * raw);
   // Keep one dominant frame for deterministic acceptance at the exact midpoint.
@@ -272,7 +284,14 @@ export function stabilizeVisemeLabel(state, desiredLabel, timestamp, speaking = 
     candidate = desired;
     candidateSince = now;
   }
-  const candidateHoldMs = timestamped ? 8 : desired === "CLOSED" ? 96 : displayed === "CLOSED" ? 56 : 72;
+  // A timestamped stream can include a one- or two-display-frame CLOSED unit
+  // between adjacent voiced phonemes. Showing it creates a visible shut-open
+  // twitch even while audio is continuous. Require a short sustained hold
+  // before a speaking mouth visibly closes, but retain real punctuation and
+  // acoustic pauses once that threshold has elapsed.
+  const candidateHoldMs = timestamped
+    ? desired === "CLOSED" && displayed !== "CLOSED" ? 72 : 8
+    : desired === "CLOSED" ? 96 : displayed === "CLOSED" ? 56 : 72;
   const minimumDwellMs = timestamped ? 64 : displayed === "CLOSED" ? 84 : 136;
   if (desired !== displayed && now - candidateSince >= candidateHoldMs && now - changedAt >= minimumDwellMs) {
     displayed = desired;

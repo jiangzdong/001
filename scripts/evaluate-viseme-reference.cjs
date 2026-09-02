@@ -19,7 +19,7 @@ const profiles = {
   A: { open: 0.94, width: 1.01 }, E: { open: 0.38, width: 1.2 },
   O: { open: 0.68, width: 0.82 }, U: { open: 0.4, width: 0.72 },
   F: { open: 0.22, width: 1.04 }, L: { open: 0.5, width: 1.02 },
-  S: { open: 0.24, width: 1.12 }, SH: { open: 0.46, width: 0.8 },
+  S: { open: 0.24, width: 1.12 }, SH: { open: 0.32, width: 0.96 },
 };
 
 function loadPronunciations() {
