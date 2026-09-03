@@ -134,4 +134,5 @@
 - 打包故障与修复：首轮打包实跑暴露 `app.asar` 内 QA 子进程脚本无法执行的 `ENOTDIR`，已将最小生成/校验/sweep 与 Fixture 运行代码放入 `app.asar.unpacked`，并让运行器从该只读运行时加载；完整社区数据仍只在 QA userData 按需生成，不打进安装包。修复后的同链路实跑通过。
 - 双屏结论：双屏是推荐模式，数字人终端屏保留真实产品界面，操作员屏显示独立实时测试控制台；显示器选择、窗口路由和回退分支已有自动测试。当前验收主机仅连接一块显示器，尚未形成真实双显示器摆放、焦点迁移与跨屏观看距离证据，因此双屏物理落位为条件项，不冒充实机通过。
 - 最终回归：锁定 Node 完整回归 **246/246 PASS**；Vite 生产构建 **4582 modules transformed**、Sites **4/4 PASS**；macOS arm64 未签名 `.app` 已生成。
+- 提交 / 推送：V1.5.20 功能提交 `80befb8` 已推送至 `origin/feat/station-advisor-local-demo`；开发前远端回退点 `1d0c3b6` 与标签 `backup-v1.5.17-pre-virtual-senior-20260903` 保持有效。
 - `PRE_DELIVERY_GATE`: PASS（macOS 单屏产品经理路径）；双显示器物理落位、Windows 2400×3840、生产 MCP 与真实 ASR/TTS/Viseme/V34 仍为独立未验收范围。
