@@ -87,8 +87,10 @@ button { font: inherit; }
   background: rgba(17, 40, 60, .54);
   backdrop-filter: blur(1.2cqw);
 }
+.virtual-senior-scrim.is-standalone { background: #f4f8fb; backdrop-filter: none; }
+.virtual-senior-scrim.is-standalone .virtual-senior-console { width: 100%; box-shadow: none; }
 .virtual-senior-console {
-  width: 93cqw;
+  width: 100cqw;
   height: 100%;
   display: grid;
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
@@ -98,6 +100,7 @@ button { font: inherit; }
   box-shadow: 2.2cqw 0 6cqw rgba(12, 37, 59, .28);
   animation: virtual-senior-enter 180ms ease-out both;
 }
+.advisor-shell.has-virtual-senior-console { mask-image: none; -webkit-mask-image: none; }
 @keyframes virtual-senior-enter { from { transform: translateX(-3cqw); opacity: .72; } to { transform: translateX(0); opacity: 1; } }
 .virtual-senior-header {
   grid-row: 1;
@@ -365,6 +368,8 @@ button { font: inherit; }
 .virtual-senior-report-path code { font-size: clamp(12px, 1.45cqw, 16px) !important; }
 .advisor-virtual-senior-entry { display: flex; align-items: center; justify-content: center; gap: .8cqw; }
 .advisor-virtual-senior-entry svg { width: 2.2cqw; height: 2.2cqw; }
+.advisor-virtual-senior-help { display: block; margin: 1cqw auto 0; color: #60788b; font-size: 1.25cqw; line-height: 1.5; text-align: center; }
+.advisor-test-mode-banner { position: fixed; z-index: 75; top: 1.5cqw; left: 50%; min-height: 5.5cqw; display: flex; align-items: center; justify-content: center; padding: .8cqw 2cqw; border-radius: 99px; background: #dff3f1; color: #176b66; font-size: 1.35cqw; font-weight: 900; box-shadow: 0 .7cqw 2cqw rgba(18, 80, 93, .12); transform: translateX(-50%); }
 @media (prefers-reduced-motion: reduce) { .virtual-senior-console { animation: none; } }
 
 .advisor-header {

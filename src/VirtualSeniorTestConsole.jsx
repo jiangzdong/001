@@ -56,8 +56,10 @@ function CommunitySummary({ community }) {
   const job = community.job;
   const summary = job?.summary;
   const coverage = summary?.matrix || {};
+  const stageLabels = { queued: "等待开始", generating: "生成社区数据", validating: "校验跨域一致性", sweeping: "扫描 5 MCP / 16 Tool" };
+  const elapsedSeconds = job?.createdAt ? Math.max(0, Math.round((Date.now() - new Date(job.createdAt).getTime()) / 1000)) : 0;
   const jobLabel = !job ? "未生成"
-    : job.status === "running" ? `${job.stage} ${job.progress?.completed || 0}/${job.progress?.total || 3}`
+    : job.status === "running" ? `${stageLabels[job.stage] || job.stage} ${job.progress?.completed || 0}/${job.progress?.total || 3}，已运行 ${elapsedSeconds} 秒`
       : job.status === "paused" ? "已在检查点暂停"
         : job.status === "cancelled" ? "已取消，可从检查点恢复"
           : job.status === "failed" ? "作业失败，可仅重跑失败阶段"
@@ -256,7 +258,7 @@ function AnalysisPanel({ batch, community, onShowFailed }) {
   );
 }
 
-export function VirtualSeniorTestConsole({ open, onClose }) {
+export function VirtualSeniorTestConsole({ open, onClose, standalone = false }) {
   const [catalog, setCatalog] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [personaFilter, setPersonaFilter] = useState("all");
@@ -382,12 +384,12 @@ export function VirtualSeniorTestConsole({ open, onClose }) {
 
   const analysis = batch?.analysis;
   return (
-    <div className="virtual-senior-scrim" role="presentation">
-      <aside className="virtual-senior-console" role="dialog" aria-modal="true" aria-labelledby="virtual-senior-title">
+    <div className={`virtual-senior-scrim ${standalone ? "is-standalone" : ""}`} role="presentation">
+      <aside className="virtual-senior-console" role={standalone ? "main" : "dialog"} aria-modal={standalone ? undefined : "true"} aria-labelledby="virtual-senior-title">
         <header className="virtual-senior-header">
           <span className="virtual-senior-header__icon"><Flask weight="duotone" /></span>
-          <div><span>QA 专用 / 测试数据</span><h2 id="virtual-senior-title">虚拟长者测试</h2><small>与正式会话隔离，不连接生产数据</small></div>
-          <button type="button" onClick={onClose} aria-label="退出测试模式"><X weight="bold" /></button>
+          <div><span>{standalone ? "双屏联动 / 实时测试数据" : "QA 专用 / 测试数据"}</span><h2 id="virtual-senior-title">虚拟长者测试</h2><small>{standalone ? "竖屏展示数字人，当前窗口控制批次并查看实时结果" : "与正式会话隔离，不连接生产数据"}</small></div>
+          <button type="button" onClick={onClose} aria-label={standalone ? "关闭测试控制台" : "退出测试模式"}><X weight="bold" /></button>
         </header>
 
         <CommunitySummary community={community} />

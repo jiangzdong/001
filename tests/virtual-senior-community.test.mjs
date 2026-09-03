@@ -21,12 +21,15 @@ function runScript(script, args) { return spawnSync(process.execPath, [path.join
 test("community Electron runner is portable and packaged startup hard-disables QA faults", () => {
   const main = fs.readFileSync(path.join(projectRoot, "electron", "main.cjs"), "utf8");
   assert.match(main, /nodePath:\s*process\.env\.VIRTUAL_SENIOR_NODE\s*\|\|\s*process\.execPath/);
-  assert.match(main, /allowTestFaultInjection:\s*virtualSeniorEnabled\s*&&\s*!app\.isPackaged\s*&&\s*process\.env\.VIRTUAL_SENIOR_COMMUNITY_QA_FAULTS\s*===\s*"1"/);
+  assert.match(main, /process\.resourcesPath, "app\.asar\.unpacked"/);
+  assert.match(main, /allowTestFaultInjection:\s*virtualSeniorStartupEnabled\s*&&\s*!app\.isPackaged\s*&&\s*process\.env\.VIRTUAL_SENIOR_COMMUNITY_QA_FAULTS\s*===\s*"1"/);
   assert.doesNotMatch(main, /\/Users\/luc\//);
   const runner = fs.readFileSync(path.join(projectRoot, "electron", "harness", "virtual-senior-community-jobs.cjs"), "utf8");
   assert.match(runner, /ELECTRON_RUN_AS_NODE:\s*"1"/);
   const build = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")).build;
   assert.doesNotMatch(JSON.stringify(build), /QA-EXTERNAL|virtual-senior-community-qa/);
+  assert.match(JSON.stringify(build.asarUnpack), /generate-virtual-senior-community-dataset\.cjs/);
+  assert.match(JSON.stringify(build.asarUnpack), /virtual-senior-fixture-mcp\.cjs/);
 });
 
 test("community profiles retain exact population sizes and a deterministic manifest", () => {

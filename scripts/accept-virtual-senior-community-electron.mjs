@@ -157,7 +157,7 @@ await evaluate(`(() => {
 await waitFor("document.querySelector('.virtual-senior-cohort header strong')?.innerText !== '0 人'");
 const filtered750 = await screenshot("virtual-senior-filtered-750x1200.png", 750, 1200);
 await evaluate("document.querySelector('.virtual-senior-job-action button').click(); true");
-await waitFor("document.querySelector('.virtual-senior-community')?.innerText.includes('已验证')", 60_000);
+await waitFor("window.kioskBridge.virtualSeniorCommunityStatus().then((value) => value.job?.status === 'completed')", 60_000);
 const completed750 = await screenshot("virtual-senior-completed-750x1200.png", 750, 1200);
 await evaluate("[...document.querySelectorAll('.virtual-senior-tabs button')].find((item) => item.innerText.includes('统计分析')).click(); true");
 await waitFor("Boolean(document.querySelector('.virtual-senior-analysis'))");

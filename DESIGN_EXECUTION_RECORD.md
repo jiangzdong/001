@@ -117,3 +117,21 @@
 - 提交 / 产物：V1.5.19 功能候选提交 `269ce3f` 已推送至 `origin/feat/station-advisor-local-demo`；社区 v1.3 两份确定性数据、独立 sweep、Electron 主流程、生命周期和视觉报告均位于 `QA-EXTERNAL/virtual-senior-community/`，不进入生产包。
 - 未验收范围：Windows 2400×3840 实体终端触屏/观看距离、系统辅助技术、Windows/生产打包，以及真实生产 MCP、ASR/TTS/Viseme/V34 链路。
 - 最终结论：**条件通过**。本机社区级纯合成测试子系统可用并满足当前设计交付门禁；不等于整体产品、Windows 实机或生产业务数据全面通过。
+
+## 10. V1.5.20 产品经理界面化启动补充
+
+- 任务类型：既有产品窄范围入口修正，不新增页面、不改变信息架构、不引入新组件类型，`DESIGN_VARIANCE=0`；事实源继续为现有“终端管理”弹窗和虚拟长者测试控制台。
+- 用户问题：现有入口仅在命令行附加 `--virtual-senior-test` 后出现，产品经理无法通过正常 App 操作进入。
+- Design Read：面向产品经理和 QA 的主 App 管理入口，保持现有冷白医疗蓝、明确动作和安全隔离语义，不把测试工具拆成第二个 App。
+- `DESIGN_VARIANCE`：3；`MOTION_INTENSITY`：2；`VISUAL_DENSITY`：7；均继承已选“安静任务台”，不调整视觉方向。
+- 交互方案：正常双击小安 App，在“终端管理”中点击“启动虚拟长者测试”；App 原地启用隔离测试运行时。双屏时主屏打开测试中心、竖屏保留数字人，单屏时当前 App 直接进入测试中心。用户不接触命令行、端口、Node 或启动参数。
+- 安全与恢复：正式会话默认仍不初始化 Fixture MCP；只有管理员显式点击才切换测试模式。完整 QA 数据继续写入 userData 且不进入安装包，关闭测试中心后仍可返回主 App。
+- 受影响状态：未启用时显示“启动虚拟长者测试”；点击后原地初始化 QA-only 运行时，双屏打开独立控制窗，单屏进入应用内全屏测试中心；初始化失败时保留管理弹窗并展示可恢复错误。按钮沿用完整轮廓、52px 触控、可见焦点，不使用单侧线条描边。
+- Taste 适用性：该页面属于管理仪表盘，`design-taste-frontend` 不作为主设计系统；仅应用其改版保护、按钮对比、文案自审、动效克制和最终预检，主体沿用现有 React、原生 CSS 与 Phosphor Icons。
+- `PRE_CODE_GATE`: PASS；本次不触发新参考研究和三方向重做的窄范围例外依据是页面、流程、组件和视觉语言均不变，只补齐既有入口的可达性与启动状态。
+- 产品经理入口验收：正常启动、无测试参数的源码 Electron 与最终重打包 App 均从“管理员连接/终端管理”真实点击“启动虚拟长者测试”成功；打包报告 `QA-EXTERNAL/virtual-senior-community/product-manager-launch-packaged-v1520-final/product-manager-launch-report.json` 为 `PASS`，当前单显示器正确采用 `single-screen-embedded`。
+- 打包运行验收：`release/mac-arm64/小安站点咨询顾问 V1.5.20.app` 由真实 GUI 完成冒烟档位的生成、全量一致性校验、5 MCP / 16 Tool sweep 与统计分析；最终报告 `QA-EXTERNAL/virtual-senior-community/product-live-ui-packaged-v1520-final/electron-ui-report.json` 为 `PASS`。750×1200 下 `undersized=0`、`oneSided=0`、低于 12px 文本为 0、横向溢出为 0、控制台错误为 0，焦点和减少动态效果审计通过。
+- 打包故障与修复：首轮打包实跑暴露 `app.asar` 内 QA 子进程脚本无法执行的 `ENOTDIR`，已将最小生成/校验/sweep 与 Fixture 运行代码放入 `app.asar.unpacked`，并让运行器从该只读运行时加载；完整社区数据仍只在 QA userData 按需生成，不打进安装包。修复后的同链路实跑通过。
+- 双屏结论：双屏是推荐模式，数字人终端屏保留真实产品界面，操作员屏显示独立实时测试控制台；显示器选择、窗口路由和回退分支已有自动测试。当前验收主机仅连接一块显示器，尚未形成真实双显示器摆放、焦点迁移与跨屏观看距离证据，因此双屏物理落位为条件项，不冒充实机通过。
+- 最终回归：锁定 Node 完整回归 **246/246 PASS**；Vite 生产构建 **4582 modules transformed**、Sites **4/4 PASS**；macOS arm64 未签名 `.app` 已生成。
+- `PRE_DELIVERY_GATE`: PASS（macOS 单屏产品经理路径）；双显示器物理落位、Windows 2400×3840、生产 MCP 与真实 ASR/TTS/Viseme/V34 仍为独立未验收范围。

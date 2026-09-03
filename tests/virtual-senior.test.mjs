@@ -290,19 +290,30 @@ test("generated artifact batch preserves generation metadata and trend dimension
   assert.equal(second.analysis.generation.trend.artifactCountDelta, 0);
 });
 
-test("test console is startup-gated and avoids single-side status strokes", async () => {
-  const [mainSource, preloadSource, appSource, styles] = await Promise.all([
+test("test console is GUI-launchable, startup-gated, dual-screen capable, and avoids single-side status strokes", async () => {
+  const [mainSource, preloadSource, appSource, entrySource, styles] = await Promise.all([
     readFile(new URL("../electron/main.cjs", import.meta.url), "utf8"),
     readFile(new URL("../electron/preload.cjs", import.meta.url), "utf8"),
     readFile(new URL("../src/StationAdvisorApp.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/station-advisor.css", import.meta.url), "utf8"),
   ]);
   assert.match(mainSource, /process\.argv\.includes\("--virtual-senior-test"\)/);
   assert.match(mainSource, /virtualSeniorEnabled \? \["--virtual-senior-test"\] : \[\]/);
+  assert.match(mainSource, /ipcMain\.handle\("virtual-senior:launch-mode"/);
+  assert.match(mainSource, /await initializeVirtualSeniorRuntime\(\)/);
+  assert.match(mainSource, /createVirtualSeniorControlWindow/);
+  assert.match(mainSource, /surface: controlWindow \? "window" : "embedded"/);
   assert.match(preloadSource, /virtualSeniorAvailable: process\.argv\.includes\("--virtual-senior-test"\)/);
+  assert.match(preloadSource, /launchVirtualSeniorTest: \(\) => ipcRenderer\.invoke\("virtual-senior:launch-mode"\)/);
+  assert.match(preloadSource, /virtualSeniorControlSurface: process\.argv\.includes\("--virtual-senior-control"\)/);
   assert.match(mainSource, /ipcMain\.handle\("virtual-senior:generate-variant"/);
   assert.match(preloadSource, /generateVirtualSeniorVariant: \(payload\) => ipcRenderer\.invoke\("virtual-senior:generate-variant"/);
   assert.match(appSource, /window\.kioskBridge\?\.virtualSeniorAvailable/);
+  assert.match(appSource, /启动虚拟长者测试/);
+  assert.match(appSource, /点击后直接进入测试中心/);
+  assert.doesNotMatch(appSource, /应用会自动重新打开/);
+  assert.match(entrySource, /virtualSeniorControlSurface/);
   const consoleStyles = styles.slice(styles.indexOf("\/\* Virtual-senior QA console"), styles.indexOf(".advisor-header {"));
   assert.doesNotMatch(consoleStyles, /border-(?:left|right)\s*:/);
   assert.match(consoleStyles, /\.virtual-senior-metric[^}]*background:/);

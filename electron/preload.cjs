@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld("kioskBridge", {
   agentMemory: (sessionId) => ipcRenderer.invoke("agent:memory", sessionId),
   clearAgentSession: (sessionId) => ipcRenderer.invoke("agent:clear-session", sessionId),
   agentStatus: () => ipcRenderer.invoke("agent:status"),
+  launchVirtualSeniorTest: () => ipcRenderer.invoke("virtual-senior:launch-mode"),
+  openVirtualSeniorControl: () => ipcRenderer.invoke("virtual-senior:open-control"),
+  closeVirtualSeniorControl: () => ipcRenderer.invoke("virtual-senior:close-control"),
   virtualSeniorStatus: () => ipcRenderer.invoke("virtual-senior:status"),
   virtualSeniorCatalog: () => ipcRenderer.invoke("virtual-senior:catalog"),
   virtualSeniorCommunityStatus: () => ipcRenderer.invoke("virtual-senior:community-status"),
@@ -98,5 +101,8 @@ contextBridge.exposeInMainWorld("kioskBridge", {
   exit: () => ipcRenderer.invoke("app:exit"),
   qaAvatar: process.argv.includes("--qa-avatar"),
   virtualSeniorAvailable: process.argv.includes("--virtual-senior-test"),
+  virtualSeniorAutoOpen: process.argv.includes("--open-virtual-senior"),
+  virtualSeniorControlSurface: process.argv.includes("--virtual-senior-control"),
+  virtualSeniorDualScreen: process.argv.includes("--virtual-senior-dual-screen"),
   platform: process.platform,
 });

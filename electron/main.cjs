@@ -57,7 +57,49 @@ let stationAdvisorSkillText = "";
 let virtualSeniorFixtureMcp;
 let virtualSeniorOrchestrator;
 let virtualSeniorCommunityJobs;
-const virtualSeniorEnabled = process.argv.includes("--virtual-senior-test");
+let virtualSeniorControlWindow;
+let virtualSeniorInitialization;
+const virtualSeniorStartupEnabled = process.argv.includes("--virtual-senior-test");
+let virtualSeniorEnabled = virtualSeniorStartupEnabled;
+const virtualSeniorAutoOpen = process.argv.includes("--open-virtual-senior");
+
+async function initializeVirtualSeniorRuntime() {
+  if (virtualSeniorOrchestrator && virtualSeniorCommunityJobs) return { available: true, enabled: true };
+  if (virtualSeniorInitialization) return virtualSeniorInitialization;
+  virtualSeniorInitialization = (async () => {
+    virtualSeniorEnabled = true;
+    virtualSeniorFixtureMcp = createVirtualSeniorFixtureMcp();
+    await virtualSeniorFixtureMcp.start();
+    const virtualSeniorArtifactStore = createVirtualSeniorArtifactStore({
+      root: path.join(app.getPath("userData"), "virtual-senior-artifacts"),
+    });
+    const virtualSeniorVariantGenerator = createVirtualSeniorVariantGenerator({
+      artifactStore: virtualSeniorArtifactStore,
+      generateCandidate: createDeepSeekVariantCandidateGenerator({ getKey: loadDeepSeekKey }),
+    });
+    virtualSeniorOrchestrator = createVirtualSeniorOrchestrator({
+      fixtureMcp: virtualSeniorFixtureMcp,
+      skillsRoot: app.isPackaged ? path.join(process.resourcesPath, "skills") : path.join(app.getAppPath(), "skills"),
+      appVersion: app.getVersion(),
+      reportRoot: path.join(app.getPath("userData"), "virtual-senior-reports"),
+      artifactStore: virtualSeniorArtifactStore,
+      variantGenerator: virtualSeniorVariantGenerator,
+    });
+    virtualSeniorCommunityJobs = createCommunityJobRunner({
+      projectRoot: app.isPackaged ? path.join(process.resourcesPath, "app.asar.unpacked") : app.getAppPath(),
+      reportRoot: path.join(app.getPath("userData"), "virtual-senior-community-qa"),
+      nodePath: process.env.VIRTUAL_SENIOR_NODE || process.execPath,
+      allowTestFaultInjection: virtualSeniorStartupEnabled && !app.isPackaged && process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULTS === "1",
+      testFaultStage: process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULT_STAGE || "",
+    });
+    return { available: true, enabled: true };
+  })();
+  try {
+    return await virtualSeniorInitialization;
+  } finally {
+    virtualSeniorInitialization = null;
+  }
+}
 
 function buildAgentHarness() {
   return createXiaoanHarness({
@@ -428,6 +470,7 @@ async function interpretAssessment(payload) {
 
 function createWindow() {
   const displays = screen.getAllDisplays();
+  const useDualScreenTest = virtualSeniorEnabled && virtualSeniorAutoOpen && displays.length > 1;
   const targetDisplay = displays
     .filter((display) => display.bounds.height > display.bounds.width)
     .sort((left, right) => (right.bounds.width * right.bounds.height) - (left.bounds.width * left.bounds.height))[0]
@@ -447,6 +490,8 @@ function createWindow() {
       additionalArguments: [
         ...(process.argv.includes("--qa-avatar") ? ["--qa-avatar"] : []),
         ...(virtualSeniorEnabled ? ["--virtual-senior-test"] : []),
+        ...(virtualSeniorAutoOpen && !useDualScreenTest ? ["--open-virtual-senior"] : []),
+        ...(useDualScreenTest ? ["--virtual-senior-dual-screen"] : []),
       ],
       contextIsolation: true,
       nodeIntegration: false,
@@ -490,6 +535,48 @@ function createWindow() {
   return win;
 }
 
+function createVirtualSeniorControlWindow() {
+  if (!virtualSeniorEnabled || screen.getAllDisplays().length < 2) return null;
+  if (virtualSeniorControlWindow && !virtualSeniorControlWindow.isDestroyed()) {
+    virtualSeniorControlWindow.show();
+    virtualSeniorControlWindow.focus();
+    return virtualSeniorControlWindow;
+  }
+  const kioskDisplay = mainWindow && !mainWindow.isDestroyed()
+    ? screen.getDisplayMatching(mainWindow.getBounds())
+    : screen.getPrimaryDisplay();
+  const displays = screen.getAllDisplays();
+  const controlDisplay = displays.find((display) => display.id !== kioskDisplay.id) || screen.getPrimaryDisplay();
+  const area = controlDisplay.workArea;
+  const width = Math.max(720, Math.min(1440, area.width - 48));
+  const height = Math.max(720, Math.min(1080, area.height - 48));
+  const win = new BrowserWindow({
+    x: area.x + Math.max(0, Math.floor((area.width - width) / 2)),
+    y: area.y + Math.max(0, Math.floor((area.height - height) / 2)),
+    width,
+    height,
+    minWidth: 720,
+    minHeight: 720,
+    title: `小安虚拟长者测试中心 ${app.getVersion()}`,
+    backgroundColor: "#f4f8fb",
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: ["--virtual-senior-test", "--virtual-senior-control", "--virtual-senior-dual-screen"],
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, "..", "dist", "client", "index.html"));
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.on("closed", () => { virtualSeniorControlWindow = null; });
+  virtualSeniorControlWindow = win;
+  return win;
+}
+
 app.whenReady().then(async () => {
   migrateLegacyUserData();
   provisionDeepSeekKeyFromEnvironment();
@@ -522,37 +609,7 @@ app.whenReady().then(async () => {
   agentHarness = process.argv.includes("--harness-self-test")
     ? createXiaoanHarness()
     : buildAgentHarness();
-  if (virtualSeniorEnabled) {
-    virtualSeniorFixtureMcp = createVirtualSeniorFixtureMcp();
-    await virtualSeniorFixtureMcp.start();
-    const virtualSeniorArtifactStore = createVirtualSeniorArtifactStore({
-      root: path.join(app.getPath("userData"), "virtual-senior-artifacts"),
-    });
-    const virtualSeniorVariantGenerator = createVirtualSeniorVariantGenerator({
-      artifactStore: virtualSeniorArtifactStore,
-      generateCandidate: createDeepSeekVariantCandidateGenerator({ getKey: loadDeepSeekKey }),
-    });
-    virtualSeniorOrchestrator = createVirtualSeniorOrchestrator({
-      fixtureMcp: virtualSeniorFixtureMcp,
-      skillsRoot: app.isPackaged ? path.join(process.resourcesPath, "skills") : path.join(app.getAppPath(), "skills"),
-      appVersion: app.getVersion(),
-      reportRoot: path.join(app.getPath("userData"), "virtual-senior-reports"),
-      artifactStore: virtualSeniorArtifactStore,
-      variantGenerator: virtualSeniorVariantGenerator,
-    });
-    virtualSeniorCommunityJobs = createCommunityJobRunner({
-      projectRoot: app.getAppPath(),
-      reportRoot: path.join(app.getPath("userData"), "virtual-senior-community-qa"),
-      // Electron itself runs the child scripts with ELECTRON_RUN_AS_NODE=1.
-      // This is portable for source Electron on macOS/Windows; an explicit
-      // override remains available for controlled QA runtimes.
-      nodePath: process.env.VIRTUAL_SENIOR_NODE || process.execPath,
-      // Faults are deliberately available only in unpacked test mode.  They
-      // cannot be enabled in packaged application startup, even via env.
-      allowTestFaultInjection: virtualSeniorEnabled && !app.isPackaged && process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULTS === "1",
-      testFaultStage: process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULT_STAGE || "",
-    });
-  }
+  if (virtualSeniorStartupEnabled) await initializeVirtualSeniorRuntime();
   if (process.argv.includes("--harness-self-test")) {
     const checks = await Promise.all([
       agentHarness.run({ runId: "selftest-meal", sessionId: "selftest", text: "助餐服务几点开始" }),
@@ -727,6 +784,21 @@ app.whenReady().then(async () => {
   ipcMain.handle("agent:memory", (_event, sessionId) => agentHarness.memory(sessionId));
   ipcMain.handle("agent:clear-session", (_event, sessionId) => ({ ok: true, cleared: agentHarness.clearSession(sessionId) }));
   ipcMain.handle("agent:status", () => agentHarness.status());
+  ipcMain.handle("virtual-senior:launch-mode", async () => {
+    await initializeVirtualSeniorRuntime();
+    const controlWindow = createVirtualSeniorControlWindow();
+    return { ok: true, enabled: true, surface: controlWindow ? "window" : "embedded", displayCount: screen.getAllDisplays().length };
+  });
+  ipcMain.handle("virtual-senior:open-control", () => {
+    if (!virtualSeniorEnabled) throw Object.assign(new Error("请先启动隔离测试模式"), { code: "TEST_MODE_DISABLED" });
+    const controlWindow = createVirtualSeniorControlWindow();
+    return { ok: true, surface: controlWindow ? "window" : "embedded", displayCount: screen.getAllDisplays().length };
+  });
+  ipcMain.handle("virtual-senior:close-control", (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (senderWindow && senderWindow === virtualSeniorControlWindow) senderWindow.close();
+    return { ok: true };
+  });
   ipcMain.handle("virtual-senior:status", () => virtualSeniorOrchestrator?.status() || { available: false, enabled: false });
   ipcMain.handle("virtual-senior:catalog", () => {
     if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
@@ -797,6 +869,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("app:exit", () => app.quit());
   mainWindow = createWindow();
+  if (virtualSeniorEnabled && virtualSeniorAutoOpen && screen.getAllDisplays().length > 1) createVirtualSeniorControlWindow();
   const speechWarmupStarted = performance.now();
   speech.warmup("zh-ll-2").then((result) => {
     runtimeTelemetry.record("tts", result?.ok ? "warmup_complete" : "warmup_error", { durationMs: performance.now() - speechWarmupStarted, ok: Boolean(result?.ok), modelId: result?.modelId || "zh-ll" });

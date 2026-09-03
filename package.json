@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安站点咨询顾问 V1.5.19",
-  "version": "1.5.19",
+  "productName": "小安站点咨询顾问 V1.5.20",
+  "version": "1.5.20",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -59,14 +59,26 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安站点咨询顾问 V1.5.19",
+    "productName": "小安站点咨询顾问 V1.5.20",
     "asar": true,
+    "asarUnpack": [
+      "scripts/generate-virtual-senior-community-dataset.cjs",
+      "scripts/validate-virtual-senior-community-dataset.cjs",
+      "scripts/run-virtual-senior-community-tool-sweep.cjs",
+      "electron/harness/mcp-client.cjs",
+      "electron/harness/mcp-tools.cjs",
+      "electron/harness/virtual-senior-community-dataset.cjs",
+      "electron/harness/virtual-senior-fixture-mcp.cjs"
+    ],
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/client/**/*",
       "electron/**/*",
+      "scripts/generate-virtual-senior-community-dataset.cjs",
+      "scripts/validate-virtual-senior-community-dataset.cjs",
+      "scripts/run-virtual-senior-community-tool-sweep.cjs",
       "package.json"
     ],
     "extraResources": [

@@ -568,7 +568,7 @@ function ExitDialog({ onClose }) {
   );
 }
 
-function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpenMcp, onOpenVirtualSenior }) {
+function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpenMcp, onOpenVirtualSenior, onVirtualSeniorActivated, virtualSeniorAvailable }) {
   const keyRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [apiKey, setApiKey] = useState("");
@@ -632,6 +632,35 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
     }
   };
 
+  const openVirtualSenior = async () => {
+    if (virtualSeniorAvailable) {
+      setSaving(true);
+      setMessage("正在打开测试中心。");
+      try {
+        const result = await window.kioskBridge?.openVirtualSeniorControl?.();
+        if (result?.surface === "window") onClose();
+        else onOpenVirtualSenior();
+      } catch (error) {
+        setMessage(error?.message || "测试中心打开失败，请重试。");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    setSaving(true);
+    setMessage("正在准备隔离测试环境，请稍候。");
+    try {
+      const result = await window.kioskBridge?.launchVirtualSeniorTest?.();
+      if (!result?.ok || !result?.enabled) throw new Error("测试模式未能启动，请重试");
+      onVirtualSeniorActivated(result);
+      if (result.surface === "window") onClose();
+      else onOpenVirtualSenior();
+    } catch (error) {
+      setSaving(false);
+      setMessage(error?.message || "测试模式启动失败，请重试。");
+    }
+  };
+
   return (
     <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape" && !saving) onClose(); }}>
       <section className="advisor-exit-dialog advisor-model-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-model-setup-title" aria-describedby="advisor-model-setup-description">
@@ -655,7 +684,8 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
             <button data-testid="advisor-deepseek-save" className="advisor-exit-submit" type="button" onClick={save} disabled={saving}>{saving ? "正在保存…" : "保存并连接"}</button>
             {configured && <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={saving}>{confirmClear ? "确认清除" : "清除本机密钥"}</button>}
             <button data-testid="advisor-open-mcp-config" className="advisor-auth-secondary" type="button" onClick={onOpenMcp} disabled={saving}>配置业务数据服务</button>
-            {window.kioskBridge?.virtualSeniorAvailable && <button data-testid="advisor-open-virtual-senior" className="advisor-auth-secondary advisor-virtual-senior-entry" type="button" onClick={onOpenVirtualSenior} disabled={saving}><Flask weight="bold" />虚拟长者测试</button>}
+            <button data-testid="advisor-open-virtual-senior" className="advisor-auth-secondary advisor-virtual-senior-entry" type="button" onClick={openVirtualSenior} disabled={saving}><Flask weight="bold" />{virtualSeniorAvailable ? "打开虚拟长者测试" : "启动虚拟长者测试"}</button>
+            <small className="advisor-virtual-senior-help">使用独立合成数据，不影响正式咨询；点击后直接进入测试中心。</small>
             {message && <div className={`advisor-pin-message ${message.startsWith("本机密钥已") ? "is-success" : ""}`} role="status" aria-live="polite">{message}</div>}
           </>
         )}
@@ -766,7 +796,9 @@ export function StationAdvisorApp() {
   const [showExit, setShowExit] = useState(false);
   const [showModelSetup, setShowModelSetup] = useState(false);
   const [showMcpSetup, setShowMcpSetup] = useState(false);
-  const [showVirtualSenior, setShowVirtualSenior] = useState(false);
+  const [showVirtualSenior, setShowVirtualSenior] = useState(() => Boolean(window.kioskBridge?.virtualSeniorAutoOpen));
+  const [virtualSeniorAvailable, setVirtualSeniorAvailable] = useState(() => Boolean(window.kioskBridge?.virtualSeniorAvailable));
+  const [virtualSeniorDualScreen, setVirtualSeniorDualScreen] = useState(() => Boolean(window.kioskBridge?.virtualSeniorDualScreen));
   const [modelConfigured, setModelConfigured] = useState(null);
   const [expandedPoints, setExpandedPoints] = useState(false);
   const [draft, setDraft] = useState("");
@@ -1377,10 +1409,11 @@ export function StationAdvisorApp() {
 
   return (
     <div className="advisor-viewport">
+      {virtualSeniorDualScreen && <div className="advisor-test-mode-banner" role="status">测试模式：仅使用合成数据</div>}
       <div className="advisor-screen-backdrop" aria-hidden="true">
         <img src="./assets/xiaoa-fullbody-extension-v1.0.0.png" alt="" />
       </div>
-      <div className={`advisor-shell advisor-screen-${screen} ${largeText ? "is-large-text" : ""} ${keyboardMode && (screen === "home" || screen === "conversation") ? "has-soft-keyboard" : ""}`}>
+      <div className={`advisor-shell advisor-screen-${screen} ${largeText ? "is-large-text" : ""} ${showVirtualSenior ? "has-virtual-senior-console" : ""} ${keyboardMode && (screen === "home" || screen === "conversation") ? "has-soft-keyboard" : ""}`}>
         {screen !== "home" && screen !== "conversation" && <AdvisorHeader screen={screen} largeText={largeText} muted={muted} onHome={goHome} onLargeText={() => setLargeText((value) => !value)} onMute={() => setMuted((value) => !value)} onExit={openExit} />}
         {screen === "home" && <HomeScreen onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} modelConfigured={modelConfigured} onConnectModel={openTerminalManagement} />}
         {screen === "conversation" && <ConversationScreen response={response} messages={messages} onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} onConnectModel={openTerminalManagement} />}
@@ -1398,7 +1431,7 @@ export function StationAdvisorApp() {
           onSubmit={(value) => submitText(value || draftRef.current)}
         />
         {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
-        {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} onOpenVirtualSenior={() => { setShowModelSetup(false); setShowVirtualSenior(true); }} />}
+        {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} onOpenVirtualSenior={() => { setShowModelSetup(false); setShowVirtualSenior(true); }} onVirtualSeniorActivated={(result) => { setVirtualSeniorAvailable(true); setVirtualSeniorDualScreen(result?.surface === "window"); }} virtualSeniorAvailable={virtualSeniorAvailable} />}
         {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowModelSetup(true); }} />}
         <VirtualSeniorTestConsole open={showVirtualSenior} onClose={() => { setShowVirtualSenior(false); closeTerminalManagement(); }} />
       </div>
