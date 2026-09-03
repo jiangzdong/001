@@ -24,7 +24,7 @@ function decodeToolResult(result) {
   try { return JSON.parse(text); } catch { return { text }; }
 }
 
-function createMcpHttpClient({ url, token = "", fetchImpl = globalThis.fetch, timeoutMs = 3000, clientName = "xiaoan-station-advisor", clientVersion = "1.5.17" } = {}) {
+function createMcpHttpClient({ url, token = "", fetchImpl = globalThis.fetch, timeoutMs = 3000, clientName = "xiaoan-station-advisor", clientVersion = "1.5.18" } = {}) {
   if (!url) throw new Error("MCP URL 不能为空");
   if (typeof fetchImpl !== "function") throw new Error("当前运行时不支持 fetch");
   let sessionId = "";

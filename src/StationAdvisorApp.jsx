@@ -9,6 +9,7 @@ import {
   Coins,
   DotsThree,
   FaceMask,
+  Flask,
   HouseLine,
   Info,
   Keyboard,
@@ -30,6 +31,7 @@ import { isMemberAuthorizationRequired, resolveAdvisorIntent } from "./stationAd
 import { advisorInteractionRetryDelayMs } from "./stationAdvisorInteraction.js";
 import { StationAdvisorDigitalHuman } from "./StationAdvisorDigitalHuman.jsx";
 import { useStationAdvisorSpeech } from "./useStationAdvisorSpeech.js";
+import { VirtualSeniorTestConsole } from "./VirtualSeniorTestConsole.jsx";
 
 const appVersion = `V${__APP_VERSION__}`;
 
@@ -566,7 +568,7 @@ function ExitDialog({ onClose }) {
   );
 }
 
-function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpenMcp }) {
+function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpenMcp, onOpenVirtualSenior }) {
   const keyRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [apiKey, setApiKey] = useState("");
@@ -653,6 +655,7 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
             <button data-testid="advisor-deepseek-save" className="advisor-exit-submit" type="button" onClick={save} disabled={saving}>{saving ? "正在保存…" : "保存并连接"}</button>
             {configured && <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={saving}>{confirmClear ? "确认清除" : "清除本机密钥"}</button>}
             <button data-testid="advisor-open-mcp-config" className="advisor-auth-secondary" type="button" onClick={onOpenMcp} disabled={saving}>配置业务数据服务</button>
+            {window.kioskBridge?.virtualSeniorAvailable && <button data-testid="advisor-open-virtual-senior" className="advisor-auth-secondary advisor-virtual-senior-entry" type="button" onClick={onOpenVirtualSenior} disabled={saving}><Flask weight="bold" />虚拟长者测试</button>}
             {message && <div className={`advisor-pin-message ${message.startsWith("本机密钥已") ? "is-success" : ""}`} role="status" aria-live="polite">{message}</div>}
           </>
         )}
@@ -763,6 +766,7 @@ export function StationAdvisorApp() {
   const [showExit, setShowExit] = useState(false);
   const [showModelSetup, setShowModelSetup] = useState(false);
   const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [showVirtualSenior, setShowVirtualSenior] = useState(false);
   const [modelConfigured, setModelConfigured] = useState(null);
   const [expandedPoints, setExpandedPoints] = useState(false);
   const [draft, setDraft] = useState("");
@@ -1210,12 +1214,12 @@ export function StationAdvisorApp() {
 
   useEffect(() => {
     const conversationalScreen = screen === "home" || screen === "conversation";
-    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showModelSetup || showMcpSetup || keyboardMode || speaking || speechPreparing) return undefined;
+    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showModelSetup || showMcpSetup || showVirtualSenior || keyboardMode || speaking || speechPreparing) return undefined;
     const retrying = Boolean(voiceMessage);
     const delayMs = retrying ? advisorInteractionRetryDelayMs : screen === "home" ? 650 : 1050;
     autoListenTimerRef.current = window.setTimeout(() => startListening({ automatic: true }), delayMs);
     return () => window.clearTimeout(autoListenTimerRef.current);
-  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
+  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, showVirtualSenior, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
 
   useEffect(() => () => {
     operationIdRef.current += 1;
@@ -1394,8 +1398,9 @@ export function StationAdvisorApp() {
           onSubmit={(value) => submitText(value || draftRef.current)}
         />
         {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
-        {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} />}
+        {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} onOpenVirtualSenior={() => { setShowModelSetup(false); setShowVirtualSenior(true); }} />}
         {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowModelSetup(true); }} />}
+        <VirtualSeniorTestConsole open={showVirtualSenior} onClose={() => { setShowVirtualSenior(false); closeTerminalManagement(); }} />
       </div>
     </div>
   );

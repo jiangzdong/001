@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安站点咨询顾问 V1.5.17",
-  "version": "1.5.17",
+  "productName": "小安站点咨询顾问 V1.5.18",
+  "version": "1.5.18",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -28,6 +28,7 @@
     "test:controls": "node --test tests/controls-cleanup.test.mjs",
     "test:assessment": "node --test tests/assessment-understanding.test.mjs tests/assessment-flow.test.mjs tests/skill-runtime.test.mjs tests/personalized-plan.test.mjs",
     "test:harness": "node --test tests/harness-runtime.test.mjs",
+    "test:virtual-senior": "node --test tests/virtual-senior.test.mjs",
     "ditto:setup-local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-ditto-local-gpu.ps1",
     "ditto:setup-trt": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-ditto-tensorrt.ps1",
     "ditto:download-local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-ditto-models-xet.ps1",
@@ -57,7 +58,7 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安站点咨询顾问 V1.5.17",
+    "productName": "小安站点咨询顾问 V1.5.18",
     "asar": true,
     "directories": {
       "output": "release"

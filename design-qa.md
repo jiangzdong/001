@@ -1094,3 +1094,28 @@ final result: passed (accepted-turn terminal response, stricter first-listen arm
 
 - Node 全量 `212/212 PASS`；Vite `4581` 模块生产构建和 Sites 产物生成通过。
 - 本机预览状态接口返回 `configured:true`、`storage:local-preview`；未发起真实 DeepSeek 问答、未重新打包或执行 Windows 实机验收。
+
+# 2026-09-03 V1.5.18 虚拟长者测试界面纠偏审查
+
+## 规范符合性结论
+
+- 初版没有完整执行全局说明中的参考研究与审美审查链路，并使用了单侧彩色线条作为指标和失败状态强调；本轮明确判定为流程与视觉规范偏差，不把事后纠偏写成原先已合规。
+- 全局设计规范已新增“禁止单侧线条描边作为装饰或状态强调”的规则；测试界面已移除指标、失败诊断和场景动作区的单侧描边。
+- 已补读 12 个 Pinterest、Behance、Dribbble 参考；其中 Pinterest 详情访问返回 403，按规范标记为“仅预览”，不虚构详情。
+- `impeccable` 与 `ui-ux-pro-max` 当前不可用，按全局说明执行 Taste 降级审查；`product-design:audit` 使用本轮实际 Electron 截图和操作证据。
+
+## 保留、增强、删除、重做
+
+- 保留：既有 9:16 冷白医疗蓝、老人主界面、管理员内受控 QA 入口、合成身份和生产数据隔离。
+- 增强：通过率、覆盖率、P50/P95、按分类/场景/画像统计、错误码、失败断言聚类、跨重启趋势和优化建议；运行中可停止。
+- 删除：三处单侧线条描边；不使用单边色条表达成功、警告或失败。
+- 重做：使用整体表面色、图标、明确文字、留白和必要的完整边界建立层级；修正可选摘要条与页脚的网格占位。
+
+## 实际界面证据与边界
+
+- macOS Electron 开发态 750×1200 实际操作：首页 → 管理员入口 → 虚拟长者测试 → 场景 → 运行 → 统计分析 → 退出均可达。
+- 截图保存在 `QA-EXTERNAL/virtual-senior/1.5.18/ui-audit-20260903/`；修正版统计页和场景页未见单侧彩色线条描边、横向溢出或页脚遮挡。
+- AX 树显示入口、页签、合成画像、10 个场景、选择状态、单项运行、批次运行、停止批次、统计分析和退出均有可读名称。
+- 未覆盖 Windows 2400×3840、实体触屏、完整键盘焦点顺序与屏幕阅读器；不宣称完整 WCAG 合规或最终生产验收。
+
+final result: conditionally passed (global rule added, visible single-side stroke pattern removed, native Electron flow re-audited); target Windows and assistive-technology validation remain pending

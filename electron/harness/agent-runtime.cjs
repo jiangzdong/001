@@ -11,6 +11,7 @@ function sanitizeId(value, prefix) {
 function defaultPlan(text) {
   if (/(头痛|头晕|失眠|睡不着|胸痛|呼吸困难|不舒服)/.test(text)) return { intent: "health.general", tool: null, arguments: {} };
   if (/助餐/.test(text) && /(几点|时间|开始|开放)/.test(text)) return { intent: "station.service.schedule", tool: "health_evaluation_service_mcp_cms.get_station_service_detail", arguments: { orgId: 1, serviceId: "meal_service" } };
+  if (/(今天|今日|近期|最近).*(活动)|有什么活动|活动安排/.test(text)) return { intent: "station.activity.list", tool: "station_content_mcp.list_station_activities", arguments: { orgId: 1 } };
   if (/健康讲堂/.test(text)) return { intent: "station.activity.detail", tool: "station_content_mcp.list_station_activities", arguments: { orgId: 1 }, selection: "health_lecture" };
   if (/八段锦/.test(text)) return { intent: "station.activity.detail", tool: "station_content_mcp.list_station_activities", arguments: { orgId: 1 }, selection: "baduanjin" };
   if (/(积分)/.test(text)) return { intent: "member.points.self", tool: "member_asset_mcp.get_member_points", arguments: { seniorId: 1, orgId: 1 }, policyInput: { owner: /他人|别人|老伴|家人/.test(text) ? "other" : "self" } };
@@ -44,6 +45,7 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
     const controller = new AbortController();
     active.set(runId, controller);
     let plan = { intent: "unknown", tool: null };
+    let selectedScenario = null;
     let sensitive = false;
     const finish = (result) => {
       memoryStore?.recordTurn(sessionId, {
@@ -58,6 +60,7 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
     };
     try {
       const scenario = scenarioResolver?.resolve(text) || { id: "unscoped", allowedTools: registry.describe().map((tool) => tool.name), content: "" };
+      selectedScenario = scenario;
       const allowed = new Set(scenario.allowedTools);
       const visibleTools = registry.describe().filter((tool) => allowed.has(tool.name));
       trace.push({ type: "scenario.selected", at: now(), scenario: scenario.id, toolCount: visibleTools.length });
@@ -109,7 +112,7 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
     } catch (error) {
       const code = error?.code || "HARNESS_ERROR";
       trace.push({ type: "run.failed", at: now(), code });
-      return finish({ ok: false, runId, sessionId, turnId, status: code === "CANCELLED" ? "cancelled" : "recoverable_error", intent: plan.intent, error: { code, message: String(error?.message || "执行失败").slice(0, 160) }, toolTrace: [], trace });
+      return finish({ ok: false, runId, sessionId, turnId, status: code === "CANCELLED" ? "cancelled" : "recoverable_error", scenario: selectedScenario?.id || null, intent: plan.intent, error: { code, message: String(error?.message || "执行失败").slice(0, 160) }, toolTrace: [], trace });
     } finally {
       if (active.get(runId) === controller) active.delete(runId);
     }

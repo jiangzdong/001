@@ -14,6 +14,8 @@ const { createXiaoanHarness } = require("./harness/index.cjs");
 const { createMcpHttpClient } = require("./harness/mcp-client.cjs");
 const { MCP_TOOL_CATALOG } = require("./harness/mcp-tools.cjs");
 const { MCP_SERVICES, createMcpConfigStore, normalizeServers } = require("./harness/mcp-config.cjs");
+const { createVirtualSeniorFixtureMcp } = require("./harness/virtual-senior-fixture-mcp.cjs");
+const { createVirtualSeniorOrchestrator } = require("./harness/virtual-senior-orchestrator.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.commandLine.appendSwitch("enable-features", "WebSpeechAPI");
@@ -49,6 +51,9 @@ let stopSoakMonitor = () => {};
 let agentHarness;
 let mcpConfigStore;
 let stationAdvisorSkillText = "";
+let virtualSeniorFixtureMcp;
+let virtualSeniorOrchestrator;
+const virtualSeniorEnabled = process.argv.includes("--virtual-senior-test");
 
 function buildAgentHarness() {
   return createXiaoanHarness({
@@ -435,7 +440,10 @@ function createWindow() {
     fullscreen: !windowed, kiosk: process.argv.includes("--kiosk"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
-      additionalArguments: process.argv.includes("--qa-avatar") ? ["--qa-avatar"] : [],
+      additionalArguments: [
+        ...(process.argv.includes("--qa-avatar") ? ["--qa-avatar"] : []),
+        ...(virtualSeniorEnabled ? ["--virtual-senior-test"] : []),
+      ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -510,6 +518,16 @@ app.whenReady().then(async () => {
   agentHarness = process.argv.includes("--harness-self-test")
     ? createXiaoanHarness()
     : buildAgentHarness();
+  if (virtualSeniorEnabled) {
+    virtualSeniorFixtureMcp = createVirtualSeniorFixtureMcp();
+    await virtualSeniorFixtureMcp.start();
+    virtualSeniorOrchestrator = createVirtualSeniorOrchestrator({
+      fixtureMcp: virtualSeniorFixtureMcp,
+      skillsRoot: app.isPackaged ? path.join(process.resourcesPath, "skills") : path.join(app.getAppPath(), "skills"),
+      appVersion: app.getVersion(),
+      reportRoot: path.join(app.getPath("userData"), "virtual-senior-reports"),
+    });
+  }
   if (process.argv.includes("--harness-self-test")) {
     const checks = await Promise.all([
       agentHarness.run({ runId: "selftest-meal", sessionId: "selftest", text: "助餐服务几点开始" }),
@@ -684,6 +702,21 @@ app.whenReady().then(async () => {
   ipcMain.handle("agent:memory", (_event, sessionId) => agentHarness.memory(sessionId));
   ipcMain.handle("agent:clear-session", (_event, sessionId) => ({ ok: true, cleared: agentHarness.clearSession(sessionId) }));
   ipcMain.handle("agent:status", () => agentHarness.status());
+  ipcMain.handle("virtual-senior:status", () => virtualSeniorOrchestrator?.status() || { available: false, enabled: false });
+  ipcMain.handle("virtual-senior:catalog", () => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.catalog();
+  });
+  ipcMain.handle("virtual-senior:run-case", (_event, payload) => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.runCase(payload || {});
+  });
+  ipcMain.handle("virtual-senior:run-batch", (_event, payload) => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.runBatch(payload || {});
+  });
+  ipcMain.handle("virtual-senior:cancel", (_event, runId) => ({ ok: true, cancelled: virtualSeniorOrchestrator?.cancel(runId) || false }));
+  ipcMain.handle("virtual-senior:latest", () => virtualSeniorOrchestrator?.latest() || null);
   ipcMain.handle("runtime:status", async () => {
     const [speechStatus, avatarStatus] = await Promise.all([speech.status(), avatar.status()]);
     const windowBounds = mainWindow && !mainWindow.isDestroyed() ? mainWindow.getBounds() : null;
@@ -734,6 +767,7 @@ app.whenReady().then(async () => {
     stopSoakMonitor();
     for (const controller of activeDeepSeekRequests.values()) controller.abort("shutdown");
     activeDeepSeekRequests.clear();
+    void virtualSeniorFixtureMcp?.close();
     speech.close();
   });
 });

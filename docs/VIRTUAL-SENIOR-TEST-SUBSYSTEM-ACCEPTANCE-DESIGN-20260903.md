@@ -211,6 +211,8 @@ Persona/Scenario Artifact
 
 ## 10. 报告、Trace 与导出
 
+批量结果必须同时保存原始逐场景报告与可用于后续优化的统计摘要，至少包含：总通过率、场景/画像/分类覆盖、按场景/画像/分类的通过与失败数、P50/P95/最大耗时、错误码、失败断言、失败聚类、与上一持久化批次的通过率变化以及按影响排序的优化建议。统计不得只驻留在当前 UI 内存；应用重启后必须从版本化批次 manifest 恢复最近历史，确保趋势可复现。
+
 每次 run 输出一个 JSON；批次另有 manifest 和人类可读摘要：
 
 ```json
@@ -298,4 +300,4 @@ Trace 至少覆盖：`test.run.started`、`persona.loaded`、`scenario.loaded`�
 
 ## 14. 当前结论
 
-方案 C 最适合当前项目：它把可重复的发布门禁建立在固定 case 和正式 Harness/MCP 协议之上，同时用 LLM 扩展表达与对抗覆盖。当前仅完成验收设计；尚未实现测试模式、persona 生成器、fixture MCP、报告器或 UI，也未增加任何产品完成百分比。
+方案 C 仍适合当前项目：它把可重复的发布门禁建立在固定 case 和正式 Harness/MCP 协议之上，同时为后续 LLM 表达变体与媒体门禁保留扩展点。V1.5.18 已完成 M0 验收内核和 M1 受控入口的首版：3 个合成画像、10 个固定场景、真实 Streamable HTTP Fixture MCP、Harness 硬断言、单项/批次/停止、JSON 持久化报告、跨重启趋势恢复及统计分析 UI。M2 的 LLM 变体、固定 WAV ASR、真实 TTS/Viseme/V34 和 Windows 2400×3840 媒体门禁仍未实现，不计为完成。
