@@ -11,6 +11,7 @@ qa/
 qa-v*.png
 *.log
 *.tmp
+/QA-EXTERNAL/virtual-senior-community/
 
 # Python and local runtimes
 **/__pycache__/

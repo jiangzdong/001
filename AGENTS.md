@@ -19,6 +19,9 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep the Station Advisor bottom interaction area as one stable voice/text/action base without nested hard outlines, vertical accent strokes, or full-height side rails.
 - Final speech-recognition text must submit immediately without a countdown or a second confirmation step; typed text remains manually editable and manually submitted.
 - Keep the welcome, conversation, consent, scan, member, exit-dialog, listening, recognizing, answering, keyboard, paused, and error states in one cold-white/medical-blue visual system, and do not leave a large unused band above the primary content.
+- The virtual-senior `community-full` test dataset must contain at least 10,000 deterministic synthetic residents and cover all 5 MCP / 16 Tool contracts with real structured success and boundary data; the original three personas remain smoke fixtures only.
+- Community test data must be cross-domain consistent by resident, versioned and reproducible from a fixed seed. Never copy production records, package the full test dataset into the production release, or use generic `{ok:true}` as a successful Tool fixture.
+- The test console must show actual generated/validated coverage. A target-state mock that says `16/16` or `覆盖就绪` must render as generating, incomplete, or blocked until current evidence proves those values.
 
 ## Mandatory Taste gate
 

@@ -4,6 +4,7 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 const { MCP_PROTOCOL_VERSION } = require("./mcp-client.cjs");
 const { MCP_TOOL_CATALOG } = require("./mcp-tools.cjs");
+const { createCommunityDataset } = require("./virtual-senior-community-dataset.cjs");
 
 const TOOL_RESULTS = Object.freeze({
   "health_evaluation_service_mcp_cms.get_station_service_detail": {
@@ -50,7 +51,7 @@ function toolsForServer(serverName, fault = {}) {
   }));
 }
 
-function createVirtualSeniorFixtureMcp() {
+function createVirtualSeniorFixtureMcp({ dataset = createCommunityDataset() } = {}) {
   let server;
   let origin = "";
   let faults = {};
@@ -80,7 +81,10 @@ function createVirtualSeniorFixtureMcp() {
       if (!toolsForServer(serverName, fault).some((item) => item.name === toolName)) {
         return writeJson(response, 200, { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "fixture tool not found" } }, headers);
       }
-      const data = TOOL_RESULTS[key] || { ok: true, factIds: [`fixture:${serverName}:${toolName}`], source: "test-fixture" };
+      // No generic success fallback is permitted. Every catalogued Tool resolves
+      // through the versioned synthetic community data contract.
+      const data = dataset.toolResponse(key, message.params?.arguments || {});
+      if (data?.error) return writeJson(response, 200, { jsonrpc: "2.0", id: message.id, error: { code: -32000, message: data.error.message, data: { code: data.error.code } } }, headers);
       return writeJson(response, 200, { jsonrpc: "2.0", id: message.id, result: { structuredContent: structuredClone(data), content: [{ type: "text", text: JSON.stringify(data) }] } }, headers);
     }
     return writeJson(response, 200, { jsonrpc: "2.0", id: message.id, error: { code: -32601, message: "method not found" } }, headers);
@@ -109,7 +113,7 @@ function createVirtualSeniorFixtureMcp() {
     if (current) await new Promise((resolve) => current.close(resolve));
   }
 
-  return { close, configure, serverConfigs, start, status: () => ({ running: Boolean(server), origin: origin ? new URL(origin).origin : null, source: "test-fixture" }) };
+  return { close, configure, dataset: () => ({ datasetVersion: dataset.datasetVersion, generatorVersion: dataset.generatorVersion, profile: dataset.profile, residents: dataset.residents, totalRecords: dataset.totalRecords, manifestHash: dataset.manifestHash, tools: dataset.tools, contractStates: dataset.contractStates, coverage: dataset.coverage(), dataClassification: dataset.dataClassification }), serverConfigs, start, status: () => ({ running: Boolean(server), origin: origin ? new URL(origin).origin : null, source: "test-fixture", dataset: { datasetVersion: dataset.datasetVersion, profile: dataset.profile, residents: dataset.residents, manifestHash: dataset.manifestHash } }) };
 }
 
 module.exports = { TOOL_RESULTS, createVirtualSeniorFixtureMcp, toolsForServer };

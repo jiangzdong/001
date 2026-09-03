@@ -1119,3 +1119,58 @@ final result: passed (accepted-turn terminal response, stricter first-listen arm
 - 未覆盖 Windows 2400×3840、实体触屏、完整键盘焦点顺序与屏幕阅读器；不宣称完整 WCAG 合规或最终生产验收。
 
 final result: conditionally passed (global rule added, visible single-side stroke pattern removed, native Electron flow re-audited); target Windows and assistive-technology validation remain pending
+
+# 2026-09-03 V1.5.18 虚拟长者 M2a 无界面基础
+
+## Design Read 与窄范围例外
+
+- 本轮只增加严格 Schema 的 LLM 测试话语制品、不可变存储及 Harness 测试编排模式，不新增页面、流程、视觉语言、组件类型或媒体资产；V1.5.18 当前界面和截图事实源保持不变。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有固定场景、硬 oracle、Tool allowlist、Policy、Fixture MCP、M0/M1 界面及 V34 几何。
+- 增强：仅合成数据的固定分类、provider 身份绑定、生成元数据、内容哈希、同请求复用、篡改检测、显式 artifact 模式和批次生成趋势维度。
+- 删除：不允许未知字段/枚举、生产数据、PII、密钥、actor/auth/scope、Tool、oracle、expected 或模型自给的 PASS 判定进入制品。
+- 重做：无 UI、CSS、视觉资产、口型或动效重做。
+
+## 验证边界
+
+- 专项 `tests/virtual-senior.test.mjs`：`14/14 PASS`；全量 Node：`226/226 PASS`；相关 CJS 语法检查通过。
+- Vite 生产构建：`4582 modules transformed`，Sites 后处理成功；`git diff --check` 在补入本机 `git-lfs` PATH 后通过。
+- 未发起真实 DeepSeek 调用；仅用注入式 adapter stub 验证请求合同及密钥不落盘。未执行固定 WAV ASR、真实 TTS/Viseme/V34、Windows 2400×3840、打包或实体设备验收。
+
+final result: conditionally passed (M2a headless contract and regression gates pass; real provider and M2 media/Windows gates remain pending)
+
+# 2026-09-03 V1.5.18 虚拟长者 M2b 固定 WAV ASR 门禁
+
+## Design Read 与窄范围例外
+
+- 本轮只新增合成固定 WAV、严格 manifest、真实本地 ASR → 既有 Harness 硬断言及批次分析，不新增页面、流程、视觉语言、组件类型或生产媒体资产；V1.5.18 当前界面和截图事实源保持不变。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有固定场景、画像、hard oracle、Tool allowlist、Policy、Fixture MCP、M0/M1 界面及 V34 五官与下巴几何。
+- 增强：版本化 PCM16 mono 16 kHz 合成 WAV、SHA-256 校验、真实 SenseVoice provider 绑定、转写 CER、ASR 时延和按场景/画像/音频条件的趋势统计。
+- 删除：不允许真实个人语音、生产数据、PII、路径逃逸、未知字段、未校验 provider 或 stub 被计为门禁 PASS。
+- 重做：无 UI、CSS、视觉资产、口型、下巴或动效重做。
+
+## 验证边界
+
+- M2b 专项 `tests/virtual-senior-asr.test.mjs`：`7/7 PASS`；真实固定 WAV 门禁：`1/1 PASS`，本地 provider 为 `sherpa-onnx-sensevoice-local`，识别文本完全匹配，CER `0`，识别时延 `502 ms`。
+- 同一转写进入既有 Harness，路由为 `station-public-info-v1`，实际调用 `health_evaluation_service_mcp_cms.get_station_service_detail`，Policy 与 hard oracle 全部通过。
+- Node 全量：`233/233 PASS`；相关 CJS 语法检查通过；Vite 生产构建 `4582 modules transformed`，Sites 后处理成功；`git diff --check` 通过。
+- 本轮没有真实 DeepSeek、个人语音、生产数据、UI、TTS/Viseme/V34 动态视觉、Windows 2400×3840、打包或实体设备验收；单条干净合成语音通过不代表噪声、方言或现场麦克风准确率。
+
+final result: conditionally passed (M2b real local SenseVoice fixed-WAV gate and regressions pass; broader audio conditions, Windows media gates, and device acceptance remain pending)
+
+# 2026-09-03 V1.5.19 虚拟长者社区级数据合同与控制台
+
+## Taste 结论
+
+- 保留：方向 1 的冷白医疗蓝、12px 表面圆角、单一图标族和安静任务台结构。
+- 增强：控制台首屏显示来自实际 manifest 的数据集版本、合成人数、跨域记录预算、5 MCP 与 16 Tool 合同数，不把设计稿目标态直接写成静态文字。
+- 删除：Fixture 的通用 `{ok:true}` 成功回退、面向长者界面的测试状态泄漏、单侧状态描边和重复中点分隔。
+- 重做：数据集以确定性按需生成替代渲染进程物化，所有 16 Tool 以结构化合成响应及明确错误合同表达。
+
+## 当前验证与限制
+
+- 设计代码前门禁重新执行为 PASS；社区专项与既有虚拟长者专项 `26/26 PASS`，完整 Node 测试 `238/238 PASS`。
+- 锁定 Node 直接运行 Vite 构建成功，`4582 modules transformed`，Sites 后处理完成。`pnpm run build` 曾受无 TTY 时 pnpm 保护拒绝清理现有依赖，中止后未清理或重装；直接 Vite 结果才是当前构建证据。
+- 已实现 `smoke=64`、`regression=1000`、`community-full=10000`、`stress=50000` 的确定性 manifest；默认全量预算 `3,514,748` 条合成跨域记录，主键与 manifest 随 seed 稳定、不同 seed 隔离。
+- 当前为开发候选：尚未完成全量 10,000 人 Tool 批次的暂停/恢复压力实跑、真实 Electron 操作截图、Windows 2400×3840 还原对比、实体设备和媒体层验收；`PRE_DELIVERY_GATE` 保持 FAIL。

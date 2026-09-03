@@ -1,0 +1,30 @@
+{
+  "manifestVersion": "1.0.0",
+  "dataClassification": "synthetic-test-only",
+  "audioFormat": {
+    "container": "wav",
+    "codec": "pcm_s16le",
+    "channels": 1,
+    "sampleRate": 16000
+  },
+  "cases": [
+    {
+      "caseId": "ASR-PUB-SERVICE-001",
+      "dataClassification": "synthetic-test-only",
+      "personaId": "senior-fixed-001",
+      "scenarioId": "PUB-SERVICE-001",
+      "relativePath": "meal-service-schedule-v1.wav",
+      "sha256": "7446debe41d959ef07f42a9a1b8a51006a269d72ca6a30e3352a66b1fd28af79",
+      "expectedText": "助餐服务的开放时间是什么时候？",
+      "allowedTranscripts": [],
+      "maxCer": 0.1,
+      "audioCondition": "synthetic-clean",
+      "sourceGenerator": {
+        "provider": "sherpa-onnx-vits-zh-ll",
+        "voiceId": "zh-ll-2",
+        "text": "助餐服务的开放时间是什么时候？",
+        "speed": 0.76
+      }
+    }
+  ]
+}

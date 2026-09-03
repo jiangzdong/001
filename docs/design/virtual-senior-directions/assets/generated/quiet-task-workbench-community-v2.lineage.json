@@ -1,0 +1,23 @@
+{
+  "master_path": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/docs/design/virtual-senior-directions/assets/master/quiet-task-workbench-v1.png",
+  "master_sha256": "600e122a101afe6f52764aab659d291c951efd94a96ce0c047fe94773bb7c5ea",
+  "edit_input_path": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/docs/design/virtual-senior-directions/assets/master/quiet-task-workbench-v1.png",
+  "output_path": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/docs/design/virtual-senior-directions/assets/generated/quiet-task-workbench-community-v2.png",
+  "output_sha256": "e653555501716d6fec8b2dd74c6a4585411f590fdb0bc827b15c380afb444545",
+  "operation": "community-scale-test-console-information-architecture-redesign",
+  "scope": "whole-image",
+  "mask_path": null,
+  "cumulative_authorized": false,
+  "preserve_dimensions": true,
+  "require_alpha": false,
+  "required_color_space": "sRGB",
+  "preserved_invariants": [
+    "9:16 portrait workbench",
+    "quiet cold-white medical-blue visual language",
+    "QA-only and synthetic-data labeling",
+    "scenario and analytics workspaces",
+    "bottom batch action",
+    "no single-side border accents or full-height side rails"
+  ],
+  "status": "candidate"
+}

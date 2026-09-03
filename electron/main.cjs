@@ -16,6 +16,9 @@ const { MCP_TOOL_CATALOG } = require("./harness/mcp-tools.cjs");
 const { MCP_SERVICES, createMcpConfigStore, normalizeServers } = require("./harness/mcp-config.cjs");
 const { createVirtualSeniorFixtureMcp } = require("./harness/virtual-senior-fixture-mcp.cjs");
 const { createVirtualSeniorOrchestrator } = require("./harness/virtual-senior-orchestrator.cjs");
+const { createCommunityJobRunner } = require("./harness/virtual-senior-community-jobs.cjs");
+const { createCommunityDataset, selectResidents } = require("./harness/virtual-senior-community-dataset.cjs");
+const { createDeepSeekVariantCandidateGenerator, createVirtualSeniorArtifactStore, createVirtualSeniorVariantGenerator } = require("./harness/virtual-senior-variant-artifacts.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.commandLine.appendSwitch("enable-features", "WebSpeechAPI");
@@ -53,6 +56,7 @@ let mcpConfigStore;
 let stationAdvisorSkillText = "";
 let virtualSeniorFixtureMcp;
 let virtualSeniorOrchestrator;
+let virtualSeniorCommunityJobs;
 const virtualSeniorEnabled = process.argv.includes("--virtual-senior-test");
 
 function buildAgentHarness() {
@@ -521,11 +525,32 @@ app.whenReady().then(async () => {
   if (virtualSeniorEnabled) {
     virtualSeniorFixtureMcp = createVirtualSeniorFixtureMcp();
     await virtualSeniorFixtureMcp.start();
+    const virtualSeniorArtifactStore = createVirtualSeniorArtifactStore({
+      root: path.join(app.getPath("userData"), "virtual-senior-artifacts"),
+    });
+    const virtualSeniorVariantGenerator = createVirtualSeniorVariantGenerator({
+      artifactStore: virtualSeniorArtifactStore,
+      generateCandidate: createDeepSeekVariantCandidateGenerator({ getKey: loadDeepSeekKey }),
+    });
     virtualSeniorOrchestrator = createVirtualSeniorOrchestrator({
       fixtureMcp: virtualSeniorFixtureMcp,
       skillsRoot: app.isPackaged ? path.join(process.resourcesPath, "skills") : path.join(app.getAppPath(), "skills"),
       appVersion: app.getVersion(),
       reportRoot: path.join(app.getPath("userData"), "virtual-senior-reports"),
+      artifactStore: virtualSeniorArtifactStore,
+      variantGenerator: virtualSeniorVariantGenerator,
+    });
+    virtualSeniorCommunityJobs = createCommunityJobRunner({
+      projectRoot: app.getAppPath(),
+      reportRoot: path.join(app.getPath("userData"), "virtual-senior-community-qa"),
+      // Electron itself runs the child scripts with ELECTRON_RUN_AS_NODE=1.
+      // This is portable for source Electron on macOS/Windows; an explicit
+      // override remains available for controlled QA runtimes.
+      nodePath: process.env.VIRTUAL_SENIOR_NODE || process.execPath,
+      // Faults are deliberately available only in unpacked test mode.  They
+      // cannot be enabled in packaged application startup, even via env.
+      allowTestFaultInjection: virtualSeniorEnabled && !app.isPackaged && process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULTS === "1",
+      testFaultStage: process.env.VIRTUAL_SENIOR_COMMUNITY_QA_FAULT_STAGE || "",
     });
   }
   if (process.argv.includes("--harness-self-test")) {
@@ -707,6 +732,27 @@ app.whenReady().then(async () => {
     if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
     return virtualSeniorOrchestrator.catalog();
   });
+  ipcMain.handle("virtual-senior:community-status", () => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return { target: virtualSeniorFixtureMcp?.dataset?.() || null, job: virtualSeniorCommunityJobs?.latest?.() || null, dataAssetBoundary: "QA-only job output; never packaged or used as production MCP data" };
+  });
+  ipcMain.handle("virtual-senior:community-start", (_event, payload) => {
+    if (!virtualSeniorCommunityJobs) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    const jobId = String(payload?.jobId || `community-${Date.now()}`);
+    void virtualSeniorCommunityJobs.start({ ...(payload || {}), jobId });
+    return virtualSeniorCommunityJobs.status(jobId);
+  });
+  ipcMain.handle("virtual-senior:community-job", (_event, jobId) => virtualSeniorCommunityJobs?.status(jobId) || null);
+  ipcMain.handle("virtual-senior:community-pause", (_event, jobId) => ({ paused: virtualSeniorCommunityJobs?.pause(jobId) || false }));
+  ipcMain.handle("virtual-senior:community-cancel", (_event, jobId) => ({ cancelled: virtualSeniorCommunityJobs?.cancel(jobId) || false }));
+  ipcMain.handle("virtual-senior:community-resume", (_event, jobId) => { if (!virtualSeniorCommunityJobs) return null; void virtualSeniorCommunityJobs.resume(jobId); return virtualSeniorCommunityJobs.status(jobId); });
+  ipcMain.handle("virtual-senior:community-rerun-failed", (_event, jobId) => { if (!virtualSeniorCommunityJobs) return null; void virtualSeniorCommunityJobs.rerunFailed(jobId); return virtualSeniorCommunityJobs.status(jobId); });
+  ipcMain.handle("virtual-senior:cohort-preview", (_event, payload) => {
+    if (!virtualSeniorEnabled) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    const dataset = createCommunityDataset({ profile: payload?.profile || "community-full", seed: Number(payload?.seed) || 104729 });
+    const residents = selectResidents(dataset, payload?.cohort || {});
+    return { profile: dataset.profile, cohort: payload?.cohort || {}, residents: residents.length, expectedToolCalls: residents.length * dataset.tools.length, sampleSeniorIds: residents.slice(0, 3).map((resident) => resident.seniorId) };
+  });
   ipcMain.handle("virtual-senior:run-case", (_event, payload) => {
     if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
     return virtualSeniorOrchestrator.runCase(payload || {});
@@ -715,7 +761,20 @@ app.whenReady().then(async () => {
     if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
     return virtualSeniorOrchestrator.runBatch(payload || {});
   });
+  ipcMain.handle("virtual-senior:generate-variant", (_event, payload) => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.generateVariant(payload || {});
+  });
   ipcMain.handle("virtual-senior:cancel", (_event, runId) => ({ ok: true, cancelled: virtualSeniorOrchestrator?.cancel(runId) || false }));
+  ipcMain.handle("virtual-senior:pause", (_event, batchId) => ({ ok: true, paused: virtualSeniorOrchestrator?.pause(batchId) || false }));
+  ipcMain.handle("virtual-senior:resume", (_event, batchId) => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.resume(batchId);
+  });
+  ipcMain.handle("virtual-senior:rerun-failed", (_event, batchId) => {
+    if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
+    return virtualSeniorOrchestrator.rerunFailed(batchId);
+  });
   ipcMain.handle("virtual-senior:latest", () => virtualSeniorOrchestrator?.latest() || null);
   ipcMain.handle("runtime:status", async () => {
     const [speechStatus, avatarStatus] = await Promise.all([speech.status(), avatar.status()]);
