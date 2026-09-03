@@ -19,6 +19,16 @@ export function isSensitiveAdvisorQuery(value) {
   return resolveAdvisorIntent(value) === "points";
 }
 
+const memberAuthorizationIntents = new Set([
+  "member.points.self",
+  "member.level.self",
+  "member.balance.self",
+]);
+
+export function isMemberAuthorizationRequired(result = {}) {
+  return result?.status === "auth_required" && memberAuthorizationIntents.has(result?.intent);
+}
+
 export function getAdvisorSubmissionPolicy({ text, confidence, provider, trustedFinal } = {}) {
   if (!normalizeAdvisorQuery(text)) return { mode: "blocked", reason: "empty" };
   return { mode: "auto", reason: "recognized-final", delayMs: advisorAutoSendDelayMs };

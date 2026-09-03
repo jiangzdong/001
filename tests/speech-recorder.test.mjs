@@ -117,6 +117,14 @@ test("adaptive VAD ignores a single transient click", () => {
   assert.equal(vad.observe(new Float32Array(128).fill(0.0001)).speech, false);
 });
 
+test("automatic-listening VAD rejects a short startup noise burst", () => {
+  const vad = createAdaptiveVad({ calibrationFrames: 8, activationFrames: 4, quietFramesBeforeActivation: 4 });
+  for (let index = 0; index < 12; index += 1) assert.equal(vad.observe(new Float32Array(128).fill(0.02)).speech, false);
+  for (let index = 0; index < 4; index += 1) assert.equal(vad.observe(new Float32Array(128).fill(0.0001)).speech, false);
+  for (let index = 0; index < 3; index += 1) assert.equal(vad.observe(new Float32Array(128).fill(0.02)).speech, false);
+  assert.equal(vad.observe(new Float32Array(128).fill(0.02)).speech, true);
+});
+
 test("RMS calculation is deterministic", () => {
   assert.equal(computeRms(new Float32Array([1, -1])), 1);
   assert.equal(computeRms(new Float32Array()), 0);
@@ -261,4 +269,15 @@ test("normal recording still captures speech and performs the same final cleanup
   assert.equal(harness.metrics.closeCalls, 1);
   assert.deepEqual(harness.metrics.trackStops, [1, 1]);
   assert.equal(abort.listenerCount(), 0);
+});
+
+test("maximum utterance duration starts only after VAD detects speech", async (t) => {
+  const harness = createMediaHarness();
+  installRecordingEnvironment(t, harness);
+  const recording = recordSpeech({ maxDurationMs: 15, maxIdleMs: 80, silenceMs: 50 });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  harness.processor.onaudioprocess(audioEvent(new Float32Array(128).fill(0.04)));
+  harness.processor.onaudioprocess(audioEvent(new Float32Array(128).fill(0.04)));
+  const result = await recording;
+  assert.equal(result.heardSpeech, true);
 });

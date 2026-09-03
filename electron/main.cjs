@@ -11,6 +11,9 @@ const { streamDeepSeekChat: requestDeepSeekStream } = require("./deepseek-client
 const { createRuntimeTelemetry } = require("./telemetry.cjs");
 const { parseSoakDuration, startSoakMonitor } = require("./soak-monitor.cjs");
 const { createXiaoanHarness } = require("./harness/index.cjs");
+const { createMcpHttpClient } = require("./harness/mcp-client.cjs");
+const { MCP_TOOL_CATALOG } = require("./harness/mcp-tools.cjs");
+const { MCP_SERVICES, createMcpConfigStore, normalizeServers } = require("./harness/mcp-config.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 app.commandLine.appendSwitch("enable-features", "WebSpeechAPI");
@@ -44,6 +47,64 @@ let runtimeTelemetry;
 let mainWindow;
 let stopSoakMonitor = () => {};
 let agentHarness;
+let mcpConfigStore;
+let stationAdvisorSkillText = "";
+
+function buildAgentHarness() {
+  return createXiaoanHarness({
+    getDeepSeekKey: loadDeepSeekKey,
+    skillText: stationAdvisorSkillText,
+    skillsRoot: app.isPackaged ? path.join(process.resourcesPath, "skills") : path.join(app.getAppPath(), "skills"),
+    mcpServers: mcpConfigStore?.load(),
+    clientVersion: app.getVersion(),
+  });
+}
+
+function replaceAgentHarness() {
+  if ((agentHarness?.status?.().activeRuns || 0) > 0) {
+    throw Object.assign(new Error("当前正在处理咨询，请在本轮回答结束后再修改业务连接"), { code: "MCP_CONFIG_BUSY" });
+  }
+  agentHarness = buildAgentHarness();
+  return agentHarness.status();
+}
+
+async function probeMcpConfiguration(servers) {
+  const normalized = normalizeServers(servers);
+  const expected = Object.fromEntries(MCP_SERVICES.map((name) => [name, MCP_TOOL_CATALOG.filter(([server]) => server === name).map(([, tool]) => tool)]));
+  const entries = await Promise.all(MCP_SERVICES.map(async (name) => {
+    const config = normalized[name];
+    if (!config.url) return [name, { configured: false, connected: false, toolCount: 0, missingTools: expected[name], error: "尚未配置地址" }];
+    const startedAt = performance.now();
+    try {
+      const client = createMcpHttpClient({ ...config, clientVersion: app.getVersion() });
+      const tools = await client.listTools();
+      const names = new Set(tools.map((tool) => tool?.name).filter(Boolean));
+      const missingTools = expected[name].filter((tool) => !names.has(tool));
+      return [name, {
+        configured: true,
+        connected: missingTools.length === 0,
+        toolCount: expected[name].filter((tool) => names.has(tool)).length,
+        advertisedToolCount: names.size,
+        missingTools,
+        durationMs: Math.round(performance.now() - startedAt),
+        error: missingTools.length ? `缺少 ${missingTools.length} 个约定工具` : null,
+      }];
+    } catch (error) {
+      return [name, {
+        configured: true,
+        connected: false,
+        toolCount: 0,
+        missingTools: expected[name],
+        durationMs: Math.round(performance.now() - startedAt),
+        error: error?.message || "连接检测失败",
+        code: error?.code || null,
+      }];
+    }
+  }));
+  const results = Object.fromEntries(entries);
+  const connectedCount = MCP_SERVICES.filter((name) => results[name].connected).length;
+  return { ok: connectedCount === MCP_SERVICES.length, connectedCount, total: MCP_SERVICES.length, servers: results };
+}
 
 function isolateWindowsKioskRenderer(rendererPid) {
   if (process.platform !== "win32" || !Number.isInteger(rendererPid) || rendererPid <= 0) return;
@@ -431,7 +492,24 @@ app.whenReady().then(async () => {
     runtimeTelemetry.record("runtime", "main_priority_warning", { status: "warning", message: error?.message || String(error) });
   }
   healthSkillLoader = createSkillLoader({ app });
-  agentHarness = createXiaoanHarness();
+  const stationAdvisorSkillPath = app.isPackaged
+    ? path.join(process.resourcesPath, "skills", "station-advisor-global-v2", "SKILL.md")
+    : path.join(app.getAppPath(), "skills", "station-advisor-global-v2", "SKILL.md");
+  stationAdvisorSkillText = fs.existsSync(stationAdvisorSkillPath) ? fs.readFileSync(stationAdvisorSkillPath, "utf8") : "";
+  mcpConfigStore = createMcpConfigStore({
+    filePath: path.join(app.getPath("userData"), "mcp.credential"),
+    encrypt: (text) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("系统加密服务暂不可用");
+      return safeStorage.encryptString(text);
+    },
+    decrypt: (data) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("系统加密服务暂不可用");
+      return safeStorage.decryptString(data);
+    },
+  });
+  agentHarness = process.argv.includes("--harness-self-test")
+    ? createXiaoanHarness()
+    : buildAgentHarness();
   if (process.argv.includes("--harness-self-test")) {
     const checks = await Promise.all([
       agentHarness.run({ runId: "selftest-meal", sessionId: "selftest", text: "助餐服务几点开始" }),
@@ -441,11 +519,14 @@ app.whenReady().then(async () => {
     const memory = agentHarness.memory("selftest");
     const sensitiveMemory = memory.turns.find((turn) => turn.sensitive);
     const report = {
-      ok: checks[0]?.status === "completed" && checks[1]?.status === "completed" && checks[2]?.status === "auth_required" && memory.turns.length === 3 && sensitiveMemory?.userText === null && sensitiveMemory?.assistantText === null,
+      ok: checks[0]?.status === "recoverable_error" && checks[0]?.error?.code === "DATA_NOT_CONFIGURED"
+        && checks[1]?.status === "recoverable_error" && checks[1]?.error?.code === "DATA_NOT_CONFIGURED"
+        && checks[2]?.status === "auth_required" && memory.turns.length === 3
+        && sensitiveMemory?.userText === null && sensitiveMemory?.assistantText === null,
       packaged: app.isPackaged,
       tools: agentHarness.status().tools.map((tool) => tool.name),
       memory: { ...agentHarness.status().memory, turns: memory.turns.length, sensitiveRedacted: sensitiveMemory?.userText === null && sensitiveMemory?.assistantText === null },
-      checks: checks.map((result) => ({ runId: result.runId, status: result.status, intent: result.intent, trace: result.trace?.map((event) => event.type) })),
+      checks: checks.map((result) => ({ runId: result.runId, status: result.status, intent: result.intent, errorCode: result.error?.code || null, trace: result.trace?.map((event) => event.type) })),
     };
     process.stdout.write(`${JSON.stringify(report)}\n`);
     speech.close(); app.exit(report.ok ? 0 : 1); return;
@@ -577,6 +658,27 @@ app.whenReady().then(async () => {
   ipcMain.handle("deepseek:cancel", (_event, requestId) => ({ ok: true, cancelled: cancelDeepSeekRequest(requestId) }));
   ipcMain.handle("deepseek:interpret-assessment", (_event, payload) => interpretAssessment(payload || {}));
   ipcMain.handle("deepseek:interpret-symptom", (_event, payload) => interpretSymptom(payload || {}));
+  ipcMain.handle("mcp:config-status", () => ({ ...mcpConfigStore.status(), runtime: agentHarness.status().mcp }));
+  ipcMain.handle("mcp:test-config", (_event, payload) => probeMcpConfiguration(payload?.servers || mcpConfigStore.load()));
+  ipcMain.handle("mcp:save-config", async (_event, payload) => {
+    if ((agentHarness.status().activeRuns || 0) > 0) throw Object.assign(new Error("当前正在处理咨询，请稍后保存"), { code: "MCP_CONFIG_BUSY" });
+    const current = mcpConfigStore.load();
+    const input = payload?.servers || {};
+    const merged = Object.fromEntries(MCP_SERVICES.map((name) => [name, {
+      url: input[name]?.url ?? current[name].url,
+      token: String(input[name]?.token || "").trim() || current[name].token,
+    }]));
+    mcpConfigStore.save(merged);
+    replaceAgentHarness();
+    const probe = await probeMcpConfiguration(mcpConfigStore.load());
+    return { ok: true, status: mcpConfigStore.status(), probe };
+  });
+  ipcMain.handle("mcp:clear-config", () => {
+    if ((agentHarness.status().activeRuns || 0) > 0) throw Object.assign(new Error("当前正在处理咨询，请稍后清除"), { code: "MCP_CONFIG_BUSY" });
+    mcpConfigStore.clear();
+    replaceAgentHarness();
+    return { ok: true, status: mcpConfigStore.status() };
+  });
   ipcMain.handle("agent:turn", (_event, payload) => agentHarness.run(payload || {}));
   ipcMain.handle("agent:cancel", (_event, runId) => ({ ok: true, cancelled: agentHarness.cancel(runId) }));
   ipcMain.handle("agent:memory", (_event, sessionId) => agentHarness.memory(sessionId));

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const { version: appVersion } = require("./package.json");
 const { createSpeechService } = require("./electron/speech-service.cjs");
 const { createAvatarService } = require("./electron/avatar-service.cjs");
+const { createXiaoanHarness } = require("./electron/harness/index.cjs");
 
 function combineSpeechChunks(chunks, result) {
   const usable = chunks.filter((chunk) => chunk?.samples?.length && Number(chunk.sampleRate) > 0);
@@ -50,9 +51,26 @@ function combineSpeechChunks(chunks, result) {
   };
 }
 
-function localSpeechApi() {
+function localSpeechApi({ previewDeepSeekKey = "" } = {}) {
   let speechService;
   let avatarService;
+  let agentHarness;
+  let webDeepSeekKey = "";
+  const isLoopback = (request) => /^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(String(request.socket?.remoteAddress || ""));
+  const readJson = (request) => new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => {
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")); } catch { reject(new Error("请求内容格式不正确")); }
+    });
+  });
+  const sendJson = (response, statusCode, payload) => {
+    response.statusCode = statusCode;
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.setHeader("Cache-Control", "no-store");
+    response.end(JSON.stringify(payload));
+  };
+  const developmentKey = () => webDeepSeekKey || previewDeepSeekKey || process.env.DEEPSEEK_API_KEY || "";
   return {
     name: "xiaoan-local-speech-api",
     configureServer(server) {
@@ -60,12 +78,65 @@ function localSpeechApi() {
         app: { isPackaged: false, getAppPath: () => process.cwd() },
       });
       avatarService = createAvatarService({ cacheDir: path.join(process.cwd(), ".cache", "avatar-videos") });
+      const stationAdvisorSkillPath = path.join(process.cwd(), "skills", "station-advisor-agent-v1", "SKILL.md");
+      agentHarness = createXiaoanHarness({
+        getDeepSeekKey: developmentKey,
+        skillText: fs.existsSync(stationAdvisorSkillPath) ? fs.readFileSync(stationAdvisorSkillPath, "utf8") : "",
+      });
+      server.middlewares.use("/api/deepseek/status", (request, response, next) => {
+        if (request.method !== "GET") { next(); return; }
+        if (!isLoopback(request)) { sendJson(response, 403, { ok: false, message: "仅允许本机网页测试" }); return; }
+        sendJson(response, 200, { ok: true, configured: Boolean(developmentKey()), storage: webDeepSeekKey ? "memory" : previewDeepSeekKey ? "local-preview" : process.env.DEEPSEEK_API_KEY ? "environment" : "none" });
+      });
+      server.middlewares.use("/api/deepseek/save", async (request, response, next) => {
+        if (request.method !== "POST") { next(); return; }
+        if (!isLoopback(request)) { sendJson(response, 403, { ok: false, message: "仅允许本机网页测试" }); return; }
+        try {
+          const key = String((await readJson(request)).key || "").trim();
+          if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(key)) throw new Error("密钥格式不正确");
+          webDeepSeekKey = key;
+          sendJson(response, 200, { ok: true });
+        } catch (error) {
+          sendJson(response, 400, { ok: false, message: error?.message || "密钥未能保存" });
+        }
+      });
+      server.middlewares.use("/api/deepseek/clear", (request, response, next) => {
+        if (request.method !== "POST") { next(); return; }
+        if (!isLoopback(request)) { sendJson(response, 403, { ok: false, message: "仅允许本机网页测试" }); return; }
+        if (!webDeepSeekKey && (previewDeepSeekKey || process.env.DEEPSEEK_API_KEY)) { sendJson(response, 409, { ok: false, message: "当前密钥由本机预览配置提供，请在本机配置文件中管理" }); return; }
+        webDeepSeekKey = "";
+        sendJson(response, 200, { ok: true });
+      });
+      server.middlewares.use("/api/agent/status", (_request, response) => {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(JSON.stringify(agentHarness.status()));
+      });
+      server.middlewares.use("/api/agent/turn", (request, response, next) => {
+        if (request.method !== "POST" || request.url !== "/") { next(); return; }
+        const chunks = [];
+        request.on("data", (chunk) => chunks.push(chunk));
+        request.on("end", async () => {
+          try {
+            const payload = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+            const result = await agentHarness.run(payload);
+            response.statusCode = 200;
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.setHeader("Cache-Control", "no-store");
+            response.end(JSON.stringify(result));
+          } catch (error) {
+            response.statusCode = 500;
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.end(JSON.stringify({ ok: false, status: "recoverable_error", error: { code: "AGENT_API_ERROR", message: error?.message || "智能体暂时不可用" } }));
+          }
+        });
+      });
       server.middlewares.use("/api/speech/status", (_request, response) => {
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.end(JSON.stringify(speechService.status()));
       });
       server.middlewares.use("/api/speech/recognize", (request, response, next) => {
-        if (request.method !== "POST") { next(); return; }
+        if (request.method !== "POST" || request.url !== "/") { next(); return; }
         const chunks = [];
         request.on("data", (chunk) => chunks.push(chunk));
         request.on("end", async () => {
@@ -80,6 +151,26 @@ function localSpeechApi() {
             response.statusCode = 500;
             response.setHeader("Content-Type", "application/json; charset=utf-8");
             response.end(JSON.stringify({ ok: false, message: error?.message || "本地语音识别暂时不可用" }));
+          }
+        });
+      });
+      server.middlewares.use("/api/speech/recognize-preview", (request, response, next) => {
+        if (request.method !== "POST" || request.url !== "/") { next(); return; }
+        const chunks = [];
+        request.on("data", (chunk) => chunks.push(chunk));
+        request.on("end", async () => {
+          try {
+            const body = Buffer.concat(chunks);
+            const alignedLength = body.byteLength - (body.byteLength % 4);
+            const arrayBuffer = body.buffer.slice(body.byteOffset, body.byteOffset + alignedLength);
+            const result = await speechService.recognizePreview({ samples: new Float32Array(arrayBuffer), sampleRate: 16000 });
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.setHeader("Cache-Control", "no-store");
+            response.end(JSON.stringify(result));
+          } catch {
+            response.statusCode = 200;
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.end(JSON.stringify({ ok: false, preview: true }));
           }
         });
       });
@@ -173,7 +264,10 @@ function localSpeechApi() {
           }
         });
       });
-      return () => speechService?.close();
+      return () => {
+        agentHarness?.clearSession?.("station-advisor");
+        speechService?.close();
+      };
     },
   };
 }
@@ -230,24 +324,29 @@ function stationAdvisorAssets() {
   };
 }
 
-export default defineConfig({
-  base: "./",
-  define: {
-    __APP_VERSION__: JSON.stringify(appVersion),
-  },
-  build: {
-    outDir: "dist/client",
-    copyPublicDir: false,
-  },
-  optimizeDeps: {
-    include: ["react", "react-dom/client"],
-  },
-  server: {
-    host: "0.0.0.0",
-    allowedHosts: ["terminal.local"],
-    warmup: {
-      clientFiles: ["./src/main.jsx"],
+export default defineConfig(({ mode }) => {
+  // This is read only by Vite's local Node process. It is never placed in the
+  // client bundle or returned by a browser API.
+  const previewEnv = loadEnv(mode, process.cwd(), "DEEPSEEK_");
+  return {
+    base: "./",
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
     },
-  },
-  plugins: [react(), localSpeechApi(), stationAdvisorAssets()],
+    build: {
+      outDir: "dist/client",
+      copyPublicDir: false,
+    },
+    optimizeDeps: {
+      include: ["react", "react-dom/client"],
+    },
+    server: {
+      host: "0.0.0.0",
+      allowedHosts: ["terminal.local"],
+      warmup: {
+        clientFiles: ["./src/main.jsx"],
+      },
+    },
+    plugins: [react(), localSpeechApi({ previewDeepSeekKey: previewEnv.DEEPSEEK_API_KEY }), stationAdvisorAssets()],
+  };
 });

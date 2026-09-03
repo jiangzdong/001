@@ -315,20 +315,13 @@ function getPreparedJawTexture(canvas, master, texture, viseme, width, height) {
   const channelOffsets = colorDelta.map((value) => clamp(value / Math.max(1, colorSamples), -32, 32));
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const index = pixel * 4;
-    // The offline mask includes a generous union ring around both lip shapes.
-    // Limit its visible coverage to the anatomical lip core and feather the
-    // last fifth. This retains the authored mouth while excluding the dark
-    // cheek/corner pixels that read as a duplicate closed mouth at 4K.
-    const sourceX = cropLeft + (pixel % cropWidth);
-    const sourceY = cropTop + Math.floor(pixel / cropWidth);
-    const coreRadiusX = width * (viseme === "A" ? 0.082 : 0.074);
-    const coreRadiusY = width * 0.065;
-    const coreDistance = Math.hypot((sourceX - width * 0.492) / coreRadiusX, (sourceY - width * 0.522) / coreRadiusY);
-    const coreAlpha = coreDistance <= 0.8 ? 1 : clamp((1 - coreDistance) / 0.2);
     mouthPixels.data[index] = clamp(texturePixels.data[index] + channelOffsets[0], 0, 255);
     mouthPixels.data[index + 1] = clamp(texturePixels.data[index + 1] + channelOffsets[1], 0, 255);
     mouthPixels.data[index + 2] = clamp(texturePixels.data[index + 2] + channelOffsets[2], 0, 255);
-    mouthPixels.data[index + 3] = Math.round(maskPixels.data[index + 3] * coreAlpha);
+    // Preserve the authored CLOSED ∪ target outer-lip union exactly. Adding a
+    // second runtime ellipse was already rejected in V30/V31 and can expose
+    // the old closed-mouth corners again by trimming this union.
+    mouthPixels.data[index + 3] = maskPixels.data[index + 3];
   }
   mouthContext.putImageData(mouthPixels, 0, 0);
   mouthLayer.__localFaceRigColourOffset = channelOffsets;
@@ -445,7 +438,7 @@ export function renderLocalFaceRig(canvas, images, actions) {
   const context = canvas.getContext("2d", { alpha: true });
   canvas.dataset.viseme = actions.viseme;
   canvas.dataset.rig = "local-mouth-chin-v34";
-  canvas.dataset.mouthMaskPolicy = "mediapipe-lip-core-feather-color-matched";
+  canvas.dataset.mouthMaskPolicy = "mediapipe-lip-union-color-matched";
   canvas.dataset.mouthTextureScaleY = actions.viseme === "A" ? "0.720" : "1.000";
   canvas.dataset.jawOpen = clamp(actions.jawOpen).toFixed(4);
   canvas.dataset.lowerLeft = clamp(actions.mouthLowerDownLeft).toFixed(4);

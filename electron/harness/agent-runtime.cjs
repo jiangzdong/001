@@ -9,23 +9,27 @@ function sanitizeId(value, prefix) {
 }
 
 function defaultPlan(text) {
-  if (/助餐/.test(text) && /(几点|时间|开始|开放)/.test(text)) return { intent: "station.service.schedule", tool: "station.get_service_schedule", arguments: { serviceId: "meal_service" } };
-  if (/健康讲堂/.test(text)) return { intent: "station.activity.detail", tool: "station.get_activity", arguments: { activityId: "health_lecture" } };
-  if (/八段锦/.test(text)) return { intent: "station.activity.detail", tool: "station.get_activity", arguments: { activityId: "baduanjin" } };
-  if (/(积分)/.test(text)) return { intent: "member.points.self", tool: "member.get_points", arguments: { owner: /他人|别人|老伴|家人/.test(text) ? "other" : "self" } };
-  if (/(余额)/.test(text)) return { intent: "member.balance.self", tool: "member.get_balance", arguments: { owner: /他人|别人|老伴|家人/.test(text) ? "other" : "self" } };
-  return { intent: "unknown", tool: null, arguments: {} };
+  if (/(头痛|头晕|失眠|睡不着|胸痛|呼吸困难|不舒服)/.test(text)) return { intent: "health.general", tool: null, arguments: {} };
+  if (/助餐/.test(text) && /(几点|时间|开始|开放)/.test(text)) return { intent: "station.service.schedule", tool: "health_evaluation_service_mcp_cms.get_station_service_detail", arguments: { orgId: 1, serviceId: "meal_service" } };
+  if (/健康讲堂/.test(text)) return { intent: "station.activity.detail", tool: "station_content_mcp.list_station_activities", arguments: { orgId: 1 }, selection: "health_lecture" };
+  if (/八段锦/.test(text)) return { intent: "station.activity.detail", tool: "station_content_mcp.list_station_activities", arguments: { orgId: 1 }, selection: "baduanjin" };
+  if (/(积分)/.test(text)) return { intent: "member.points.self", tool: "member_asset_mcp.get_member_points", arguments: { seniorId: 1, orgId: 1 }, policyInput: { owner: /他人|别人|老伴|家人/.test(text) ? "other" : "self" } };
+  return { intent: "station.knowledge.search", tool: "station_content_mcp.search_station_knowledge", arguments: { orgId: 1, query: text, limit: 3 } };
 }
 
 function publicAnswer(plan, data) {
-  if (plan.tool === "station.get_service_schedule") return `${data.name}时间是${data.speechSchedule || data.schedule}，地点在${data.location}。`;
-  if (plan.tool === "station.get_activity") return `${data.title}：${data.summary}。地点在${data.location}。`;
-  if (plan.tool === "member.get_points") return `您当前有${data.points}积分。`;
-  if (plan.tool === "member.get_balance") return `您当前余额为${data.balance}元。`;
+  if (plan.intent === "health.general" && !plan.tool) return "我先了解一下：这种不适从什么时候开始，现在严重吗？如果突然很剧烈或伴有意识、说话、肢体异常，请立即就医。";
+  if (plan.tool === "health_evaluation_service_mcp_cms.get_station_service_detail") return `${data.name}时间是${data.speechSchedule || data.schedule}，地点在${data.location}。`;
+  if (plan.tool === "station_content_mcp.list_station_activities") {
+    const activity = data.items?.find((item) => item.activityId === plan.selection) || data.items?.[0];
+    return activity ? `${activity.title}：${activity.summary}。地点在${activity.location}。` : "暂时没有查到符合条件的站点活动。";
+  }
+  if (plan.tool === "member_asset_mcp.get_member_points") return `您当前有${data.total}积分。`;
+  if (plan.tool === "station_content_mcp.search_station_knowledge") return data.items?.[0]?.summary || "这个问题暂时没有查到已发布的站点资料。";
   return "这个问题我暂时无法通过已注册工具核实。";
 }
 
-function createAgentRuntime({ registry, planner = defaultPlan, memoryStore = null, now = () => Date.now() }) {
+function createAgentRuntime({ registry, planner = defaultPlan, composer = publicAnswer, memoryStore = null, scenarioResolver = null, capabilities = {}, now = () => Date.now() }) {
   const active = new Map();
 
   async function run(input = {}) {
@@ -53,21 +57,55 @@ function createAgentRuntime({ registry, planner = defaultPlan, memoryStore = nul
       return result;
     };
     try {
-      plan = await planner(text, { registry: registry.describe(), signal: controller.signal, memory: memoryStore?.snapshot(sessionId) || { sessionId, turns: [] } });
+      const scenario = scenarioResolver?.resolve(text) || { id: "unscoped", allowedTools: registry.describe().map((tool) => tool.name), content: "" };
+      const allowed = new Set(scenario.allowedTools);
+      const visibleTools = registry.describe().filter((tool) => allowed.has(tool.name));
+      trace.push({ type: "scenario.selected", at: now(), scenario: scenario.id, toolCount: visibleTools.length });
+      plan = await planner(text, { registry: visibleTools, scenario, scenarioSkill: scenario.content, signal: controller.signal, memory: memoryStore?.snapshot(sessionId) || { sessionId, turns: [] } });
+      if (plan.tool && registry.get(plan.tool) && !allowed.has(plan.tool)) throw Object.assign(new Error("场景不允许调用该工具"), { code: "SCENARIO_TOOL_NOT_ALLOWED" });
       trace.push({ type: "plan.completed", at: now(), intent: plan.intent, tool: plan.tool });
-      if (!plan.tool) return finish({ ok: true, runId, sessionId, turnId, status: "completed", intent: plan.intent, answer: { speechText: publicAnswer(plan) }, toolTrace: [], trace });
+      if (!plan.tool) {
+        const composed = await composer(plan, null, { text, scenario: scenario.id, scenarioSkill: scenario.content, memory: memoryStore?.snapshot(sessionId), signal: controller.signal });
+        const answer = typeof composed === "string" ? { speechText: composed } : composed;
+        return finish({ ok: true, runId, sessionId, turnId, status: "completed", scenario: scenario.id, intent: plan.intent, answer, toolTrace: [], trace });
+      }
       const tool = registry.get(plan.tool);
       sensitive = Boolean(tool && tool.sensitivity !== "public");
-      const policy = evaluatePolicy({ tool, actor: input.actor, input: plan.arguments });
+      const policy = evaluatePolicy({ tool, actor: input.actor, input: plan.policyInput || plan.arguments });
       trace.push({ type: "policy.evaluated", at: now(), decision: policy.decision, reasonCode: policy.reasonCode });
       if (policy.decision !== "ALLOW") {
-        return finish({ ok: true, runId, sessionId, turnId, status: policy.decision === "AUTH_REQUIRED" ? "auth_required" : "denied", intent: plan.intent, policy, answer: null, toolTrace: [], trace });
+        return finish({ ok: true, runId, sessionId, turnId, status: policy.decision === "AUTH_REQUIRED" ? "auth_required" : "denied", scenario: scenario.id, intent: plan.intent, policy, answer: null, toolTrace: [], trace });
+      }
+      const toolTrace = [];
+      const toolArguments = { ...(plan.arguments || {}) };
+      const needsRemoteAuthorization = tool.sensitivity === "personal" && tool.server !== "identity_permission_mcp";
+      if (needsRemoteAuthorization) {
+        delete toolArguments.authorizationId;
+        const permissionToolName = "identity_permission_mcp.check_data_permission";
+        const permissionStarted = now();
+        const permissionInvocation = await registry.invoke(permissionToolName, {
+          orgId: toolArguments.orgId ?? input.tenantId ?? 1,
+          operatorId: String(input.actor?.operatorId || input.terminalId || "kiosk"),
+          seniorId: toolArguments.seniorId ?? 1,
+          action: tool.action,
+          authToken: input.actor?.subjectToken || null,
+        }, { runId, sessionId, turnId, signal: controller.signal, actor: input.actor || {} });
+        const permissionData = permissionInvocation?.__mcpResult ? permissionInvocation.data : permissionInvocation;
+        toolTrace.push({ tool: permissionToolName, server: permissionInvocation?.meta?.server || "identity_permission_mcp", transport: permissionInvocation?.meta?.transport || "mcp", source: permissionInvocation?.meta?.source || "remote", status: "ok", durationMs: Math.max(0, now() - permissionStarted) });
+        if (permissionData?.decision !== "ALLOW" || !permissionData.authorizationId) {
+          const decision = permissionData?.decision || "DENY";
+          return finish({ ok: true, runId, sessionId, turnId, status: decision === "AUTH_REQUIRED" ? "auth_required" : "denied", scenario: scenario.id, intent: plan.intent, policy: permissionData || { decision: "DENY", reasonCode: "PERMISSION_SERVICE_DENIED" }, answer: null, toolTrace, trace });
+        }
+        toolArguments.authorizationId = permissionData.authorizationId;
       }
       const toolStarted = now();
-      const data = await registry.invoke(plan.tool, plan.arguments, { runId, sessionId, turnId, signal: controller.signal, actor: input.actor || {} });
-      const toolTrace = [{ tool: plan.tool, status: "ok", durationMs: Math.max(0, now() - toolStarted) }];
+      const invoked = await registry.invoke(plan.tool, toolArguments, { runId, sessionId, turnId, signal: controller.signal, actor: input.actor || {} });
+      const data = invoked?.__mcpResult ? invoked.data : invoked;
+      toolTrace.push({ tool: plan.tool, server: invoked?.meta?.server || tool.server || null, transport: invoked?.meta?.transport || tool.transport, source: invoked?.meta?.source || "local", status: "ok", durationMs: Math.max(0, now() - toolStarted) });
       trace.push({ type: "tool.completed", at: now(), tool: plan.tool, status: "ok" });
-      return finish({ ok: true, runId, sessionId, turnId, status: "completed", intent: plan.intent, policy, answer: { speechText: publicAnswer(plan, data), facts: data.factIds || [] }, data, toolTrace, trace });
+      const composed = await composer(plan, data, { text, scenario: scenario.id, scenarioSkill: scenario.content, memory: memoryStore?.snapshot(sessionId), signal: controller.signal });
+      const answer = typeof composed === "string" ? { speechText: composed } : composed;
+      return finish({ ok: true, runId, sessionId, turnId, status: "completed", scenario: scenario.id, intent: plan.intent, policy, answer: { ...answer, facts: data.factIds || data.fact_ids || answer?.facts || [] }, data, toolTrace, trace });
     } catch (error) {
       const code = error?.code || "HARNESS_ERROR";
       trace.push({ type: "run.failed", at: now(), code });
@@ -101,7 +139,7 @@ function createAgentRuntime({ registry, planner = defaultPlan, memoryStore = nul
     cancel,
     memory,
     clearSession,
-    status: () => ({ ready: true, tools: registry.describe(), activeRuns: active.size, memory: memoryStore?.status() || { mode: "disabled", persistent: false } }),
+    status: () => ({ ready: true, tools: registry.describe(), activeRuns: active.size, memory: memoryStore?.status() || { mode: "disabled", persistent: false }, ...Object.fromEntries(Object.entries(capabilities).map(([key, value]) => [key, typeof value === "function" ? value() : value])) }),
   };
 }
 

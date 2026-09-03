@@ -1,12 +1,24 @@
 # 健康管理 Skill 版本索引
 
-记录日期：2026年8月20日。
+记录日期：2026年9月3日。
+
+## 当前站点应用运行时
+
+当前运行时只加载以下 Skill：
+
+- `station-advisor-global-v2`：全局治理。
+- `station-public-info-v1`：站点服务、活动和公共知识。
+- `member-self-service-v1`：本人会员资产。
+- `identity-and-permission-v1`：身份与权限。
+- `health-general-guidance-v1`：普通症状和通用健康知识，不进入问卷。
+
+下表健康管理 V1/V2/V3 仅保留为历史源码，不再由站点应用加载，也不进入新安装包资源。
 
 | 大版本 | Skill 名称 | 文件夹 | 版本定位 | 当前状态 |
 |---|---|---|---|---|
 | V1.0.0 | 通用健康管理版 | `health-management-v1` | 面向60岁以上老年人的通用健康管理、报告解读和行动计划 | 保留 |
-| V2.4.0 | 多领域健康管理自然引导版 | `health-management-multidomain-v2` | 保留七领域弹性问答；新增非健康问题的一句简答、上下文引导和最近三次去重复规则 | 保留，当前运行时使用 |
-| V3.0.0 | 自适应健康问答版 | `health-management-adaptive-dialogue-v3` | 意图识别、症状专项追问、有限轮次、语音与选项等价、简短方案和医疗引导 | 新增，已进入打包资源，尚未切换为默认运行时 |
+| V2.4.0 | 多领域健康管理自然引导版 | `health-management-multidomain-v2` | 七领域弹性问答与自然引导 | 历史保留，不进入当前运行时/打包资源 |
+| V3.0.0 | 自适应健康问答版 | `health-management-adaptive-dialogue-v3` | 症状专项追问、有限轮次、语音与选项等价 | 历史保留，不进入当前运行时/打包资源 |
 
 ## 版本编号规则
 

@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle,
   Coins,
+  DotsThree,
   FaceMask,
   HouseLine,
   Info,
@@ -15,7 +16,6 @@ import {
   LockKey,
   Microphone,
   PersonSimpleCircle,
-  PaperPlaneTilt,
   ShieldCheck,
   SignOut,
   SpeakerHigh,
@@ -26,7 +26,7 @@ import {
 } from "@phosphor-icons/react";
 import { recordSpeech } from "./speechRecorder.js";
 import { AdvisorChineseKeyboard } from "./AdvisorChineseKeyboard.jsx";
-import { resolveAdvisorIntent } from "./stationAdvisorInput.js";
+import { isMemberAuthorizationRequired, resolveAdvisorIntent } from "./stationAdvisorInput.js";
 import { advisorInteractionRetryDelayMs } from "./stationAdvisorInteraction.js";
 import { StationAdvisorDigitalHuman } from "./StationAdvisorDigitalHuman.jsx";
 import { useStationAdvisorSpeech } from "./useStationAdvisorSpeech.js";
@@ -39,18 +39,47 @@ const defaultQuestions = [
   { id: "points", icon: Coins, label: "帮我查一下会员积分", shortLabel: "会员积分" },
 ];
 
+// The model may recommend a next question, but it must not invent a visible
+// business entry. These are the only user-facing routes backed by the current
+// 5-MCP / 16-tool contract. Tool names themselves stay internal to the agent.
+const approvedSuggestionCatalog = Object.freeze({
+  "station-service-list": { id: "services", label: "站点服务", question: "站点可以提供哪些服务？" },
+  "station-service-detail": { id: "services", label: "服务详情", question: "请介绍站点服务的时间、地点和预约要求" },
+  "station-activity-list": { id: "activities", label: "近期活动", question: "今天站点有什么活动？" },
+  "station-activity-detail": { id: "activities", label: "活动详情", question: "请介绍近期活动的内容和安排" },
+  "member-points": { id: "points", label: "会员积分", question: "帮我查询会员积分" },
+  "member-level": { id: "points", label: "会员等级", question: "帮我查询会员等级" },
+});
+
+const legacySuggestionAliases = Object.freeze({
+  activities: "station-activity-list",
+  services: "station-service-list",
+  points: "member-points",
+});
+
+function approvedSuggestions(candidates) {
+  const seen = new Set();
+  return (Array.isArray(candidates) ? candidates : []).flatMap((candidate) => {
+    const rawId = String(candidate?.id || "").trim();
+    const capability = approvedSuggestionCatalog[legacySuggestionAliases[rawId] || rawId];
+    if (!capability || seen.has(capability.id)) return [];
+    seen.add(capability.id);
+    return [capability];
+  }).slice(0, 3);
+}
+
 const responses = {
   activities: {
-    title: "今天共有 3 场活动",
-    body: "上午 9:30 有八段锦，下午 2:00 是健康讲堂，下午 3:30 有手工兴趣小组。您到活动室门口签到即可参加。",
-    meta: "活动安排 · 8月31日",
+    title: "查询站点活动",
+    body: "我可以帮您查询活动安排。当前还没有接入站点正式活动数据，因此不能确认具体时间和地点。",
+    meta: "站点咨询顾问",
     followups: ["八段锦在哪里参加？", "健康讲堂讲什么？", "还有哪些长期活动？"],
     agents: [{ id: "activities", label: "活动报名" }, { id: "activities", label: "活动日历" }, { id: "services", label: "站点服务" }],
   },
   services: {
-    title: "站点提供 5 类日常服务",
-    body: "包括活动报名、健康知识、助餐指引、康复训练咨询和会员服务。需要专业判断时，请以现场工作人员的正式安排为准。",
-    meta: "柳州康养服务站",
+    title: "查询站点服务",
+    body: "我可以帮您查询服务信息。当前还没有接入站点正式业务数据，因此不能确认服务时间、地点或预约要求。",
+    meta: "站点咨询顾问",
     followups: ["怎么报名活动？", "助餐服务几点开始？", "康复训练怎么预约？"],
     agents: [{ id: "services", label: "助餐服务" }, { id: "services", label: "康复预约" }, { id: "activities", label: "活动报名" }],
   },
@@ -61,28 +90,55 @@ const responses = {
     agents: [{ id: "points", label: "积分明细" }, { id: "points", label: "会员余额" }],
   },
   generic: {
-    title: "我已经记下您的问题",
-    body: "本机演示目前可以回答站点活动、服务项目和本人会员信息。您可以换一种说法，或直接点选下面的问题继续体验。",
-    meta: "本机演示说明",
+    title: "我来帮您确认",
+    body: "这个问题暂时没有查到已发布的站点资料。您可以换一种说法，或选择相关问题继续查询。",
+    meta: "站点咨询顾问",
     followups: ["今天站点有什么活动？", "站点可以提供哪些服务？", "帮我查一下会员积分"],
     agents: [{ id: "activities", label: "活动服务" }, { id: "services", label: "站点服务" }, { id: "points", label: "会员积分" }],
   },
 };
 
+const personalHealthAuthorizationResponse = {
+  title: "需要先确认身份",
+  body: "这项请求涉及您的个人健康数据，需要先确认身份。普通健康咨询不需要读取个人资料，您也可以直接描述哪里不舒服。",
+  meta: "健康管理智能体",
+  followups: [],
+  agents: [],
+};
+
 function responseFromHarness(result, fallback) {
-  if (!result?.ok || result.status !== "completed" || result.intent === "unknown" || !result.answer?.speechText) return fallback;
+  if (!result?.ok || result.status !== "completed" || !result.answer?.speechText) {
+    const errorCode = result?.error?.code || "AGENT_UNAVAILABLE";
+    return {
+      title: "暂时没能完成查询",
+      body: errorCode === "MODEL_NOT_CONFIGURED"
+        ? "大模型尚未连接，请联系管理员完成配置后再试。"
+        : errorCode === "DATA_NOT_CONFIGURED" || errorCode === "MCP_SERVER_NOT_CONFIGURED"
+          ? "正式业务数据还没有接入，我不能替您猜测时间、地点或预约要求。请在业务系统配置完成后再查询。"
+          : "这次查询没有成功，您可以稍后再试，或换一种说法。",
+      meta: "站点咨询顾问",
+      followups: [],
+      agents: [],
+      errorCode,
+    };
+  }
   const titles = {
-    "station.service.schedule": "助餐服务时间",
+    "station.service.schedule": "服务详情",
     "station.activity.detail": result.data?.title || "活动详情",
     "member.points.self": "会员积分",
     "member.balance.self": "会员余额",
   };
+  const agentMeta = result.intent === "health.general"
+    ? "健康管理智能体"
+    : String(result.intent || "").startsWith("member.")
+      ? "会员服务智能体"
+      : "站点业务智能体";
   return {
-    title: titles[result.intent] || "站点咨询结果",
+    title: result.answer.title || titles[result.intent] || "站点咨询结果",
     body: result.answer.speechText,
-    meta: "站点业务智能体",
+    meta: agentMeta,
     followups: [],
-    agents: fallback?.agents || [],
+    agents: approvedSuggestions(result.answer.suggestions?.length ? result.answer.suggestions : fallback?.agents),
   };
 }
 
@@ -99,6 +155,58 @@ async function isLocalSpeechApiReady() {
   } catch {
     return false;
   }
+}
+
+async function requestWebDeepSeek(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { Accept: "application/json", ...(options.headers || {}) },
+    cache: "no-store",
+  });
+  const contentType = String(response.headers.get("content-type") || "");
+  if (!contentType.includes("application/json")) throw new Error("本机网页测试服务未就绪");
+  const result = await response.json();
+  if (!response.ok || result?.ok === false) throw new Error(result?.message || "本机网页测试服务暂时不可用");
+  return result;
+}
+
+function deepSeekConfigurationApi() {
+  const bridge = window.kioskBridge;
+  if (bridge?.deepSeekStatus && bridge?.saveDeepSeekKey && bridge?.clearDeepSeekKey) {
+    return {
+      status: () => bridge.deepSeekStatus(),
+      save: (key) => bridge.saveDeepSeekKey(key),
+      clear: () => bridge.clearDeepSeekKey(),
+    };
+  }
+  return {
+    status: () => requestWebDeepSeek("/api/deepseek/status"),
+    save: (key) => requestWebDeepSeek("/api/deepseek/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    }),
+    clear: () => requestWebDeepSeek("/api/deepseek/clear", { method: "POST" }),
+  };
+}
+
+const mcpServiceLabels = {
+  health_risk_assessment_mcp: "健康风险研判",
+  health_evaluation_service_mcp_cms: "健康与站点服务",
+  identity_permission_mcp: "身份与权限",
+  member_asset_mcp: "会员资产",
+  station_content_mcp: "站点内容",
+};
+
+function mcpConfigurationApi() {
+  const bridge = window.kioskBridge;
+  if (!bridge?.mcpConfigStatus || !bridge?.saveMcpConfig || !bridge?.clearMcpConfig || !bridge?.testMcpConfig) return null;
+  return {
+    status: () => bridge.mcpConfigStatus(),
+    save: (servers) => bridge.saveMcpConfig(servers),
+    clear: () => bridge.clearMcpConfig(),
+    test: (servers) => bridge.testMcpConfig(servers),
+  };
 }
 
 function HeaderButton({ icon: Icon, label, active = false, onClick }) {
@@ -147,36 +255,21 @@ function AvatarStage({ compact = false, home = false, listening = false, speakin
   );
 }
 
-function AdvisorComposer({ draft, status, voiceState, autoVoiceEnabled, keyboardMode, speaking, preparing, onDraftChange, onFocus, onKeyboard, onMic, onSubmit }) {
+function AdvisorComposer({ draft, status, voiceState, keyboardMode, modelConfigured, onDraftChange, onFocus, onKeyboard, onMic, onConfigureModel, onSubmit }) {
   const inputRef = useRef(null);
-  const listening = voiceState === "listening" || voiceState === "starting";
+  const standby = voiceState === "standby";
+  const listening = voiceState === "listening";
   const recognizing = voiceState === "recognizing";
   const busy = listening || recognizing;
-  const paused = !autoVoiceEnabled || voiceState === "paused";
-  const modeLabel = keyboardMode
-    ? "键盘输入"
-    : speaking
-    ? "小安正在回答"
-    : preparing
-      ? "正在准备回答"
-      : listening
-        ? "自动聆听中"
-        : recognizing
-          ? "正在识别"
-          : voiceState === "submitting"
-            ? "正在发送"
-            : voiceState === "editing"
-            ? "键盘输入"
-            : paused
-              ? "语音已暂停"
-              : "自动聆听已开启";
-  const micLabel = speaking
-    ? "打断回答并开始聆听"
-    : busy
-      ? "暂停自动聆听"
-      : paused
-        ? "恢复自动聆听"
-        : "立即开始聆听";
+  const waveActive = standby || listening;
+  const modelConnectionRequired = voiceState === "paused" && modelConfigured === false;
+  const voiceStatus = recognizing
+    ? "正在识别，请稍候"
+    : listening
+      ? "正在聆听，请直接说话"
+      : modelConnectionRequired
+        ? "大模型未连接，请先连接"
+        : status;
   const activateKeyboard = () => {
     onKeyboard();
     window.requestAnimationFrame(() => {
@@ -186,16 +279,9 @@ function AdvisorComposer({ draft, status, voiceState, autoVoiceEnabled, keyboard
   };
   return (
     <form data-testid="advisor-input-module" data-voice-state={voiceState} className={`advisor-composer state-${voiceState} ${busy ? "is-listening" : ""} ${keyboardMode ? "is-keyboard" : ""}`} onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-      <div className="advisor-composer__field">
-        <div className="advisor-composer__status">
-          <strong>{modeLabel}</strong>
-          <small>
-            <Waveform weight="bold" />
-            <span aria-hidden="true">{status}</span>
-            <span className="advisor-sr-only" aria-live="polite">{status}</span>
-          </small>
-        </div>
-        <div className="advisor-composer__input-surface">
+      {keyboardMode ? <>
+        <div className="advisor-composer__field">
+          <div className="advisor-composer__input-surface">
           <label className="advisor-sr-only" htmlFor="advisor-question-input">站点咨询问题</label>
           <input
             id="advisor-question-input"
@@ -210,26 +296,30 @@ function AdvisorComposer({ draft, status, voiceState, autoVoiceEnabled, keyboard
               event.preventDefault();
               onSubmit();
             }}
-            placeholder={listening ? "请直接说话，文字会出现在这里" : paused ? "点这里输入，或恢复语音" : "直接说话，或点这里输入"}
+            placeholder="请输入问题"
             aria-label="站点咨询问题"
             autoComplete="off"
             enterKeyHint="send"
           />
-          {draft && !busy && <button className="advisor-composer__clear" type="button" onClick={() => onDraftChange("")} aria-label="清空输入"><X weight="bold" /></button>}
+          {draft && <button className="advisor-composer__clear" type="button" onClick={() => onDraftChange("")} aria-label="清空输入"><X weight="bold" /></button>}
+          </div>
         </div>
-      </div>
-      <button className={`advisor-composer__mic ${paused ? "is-paused" : ""}`} type="button" onClick={onMic} aria-pressed={autoVoiceEnabled && !paused} aria-label={micLabel}>
-        <Microphone weight="fill" />
-      </button>
-      <div className="advisor-composer__actions">
-        {draft && !busy ? <button className="advisor-composer__send" type="submit" aria-label="发送问题">
-          <PaperPlaneTilt weight="fill" />
-          <span>发送</span>
-        </button> : <button data-testid="advisor-keyboard-trigger" className={`advisor-composer__keyboard ${keyboardMode ? "is-active" : ""}`} type="button" onClick={activateKeyboard} aria-pressed={keyboardMode} aria-label="打开应用内中文键盘">
+        <button className="advisor-composer__mic" type="button" onClick={onMic} aria-label="切换到语音输入">
+          <Microphone weight="fill" />
+        </button>
+      </> : <>
+        <div className="advisor-composer__voice" role="status" aria-live="polite">
+          <Waveform className={waveActive ? "is-active" : ""} weight="bold" />
+          <span>{voiceStatus}</span>
+        </div>
+        {modelConnectionRequired ? <button className="advisor-composer__model-connect" type="button" onClick={onConfigureModel} aria-label="连接 DeepSeek">
+          <LockKey weight="bold" />
+          <span>连接</span>
+        </button> : <button data-testid="advisor-keyboard-trigger" className="advisor-composer__keyboard" type="button" onClick={activateKeyboard} aria-label="切换到键盘输入">
           <Keyboard weight="bold" />
-          <span>键盘</span>
+          <span className="advisor-sr-only">键盘</span>
         </button>}
-      </div>
+      </>}
     </form>
   );
 }
@@ -242,7 +332,9 @@ function AdvisorRecognition({ composerProps, avatarProps }) {
       ? "正在回答"
       : hearing
         ? "正在识别"
-        : composerProps.autoVoiceEnabled
+          : composerProps.modelConfigured === false
+            ? "需要管理员连接"
+            : composerProps.autoVoiceEnabled
           ? "等待您说话"
           : "语音已暂停";
   return (
@@ -266,7 +358,7 @@ function AdvisorFlowStatus({ icon: Icon, label }) {
   );
 }
 
-function HomeScreen({ onQuestion, composerProps, avatarProps }) {
+function HomeScreen({ onQuestion, composerProps, avatarProps, modelConfigured, onConnectModel }) {
   const hearing = ["starting", "listening", "recognizing"].includes(composerProps.voiceState);
   const homeComposerStatus = avatarProps.speaking || avatarProps.preparing
     ? "小安正在回答"
@@ -286,6 +378,7 @@ function HomeScreen({ onQuestion, composerProps, avatarProps }) {
         <div className="advisor-greeting" role="status">
           <h1>您好，我是小安</h1>
           <p>您可以直接说出想咨询的站点服务问题</p>
+          <button className="advisor-model-connect-trigger" type="button" onClick={onConnectModel}>{modelConfigured === false ? "管理员连接" : "终端管理"}</button>
         </div>
         <div data-testid="advisor-quick-question-module" className="advisor-home-questions" aria-label="常见问题">
           {defaultQuestions.map(({ id, icon: Icon, label, shortLabel }) => (
@@ -301,9 +394,9 @@ function HomeScreen({ onQuestion, composerProps, avatarProps }) {
   );
 }
 
-function ConversationScreen({ response, messages, onQuestion, composerProps, avatarProps }) {
+function ConversationScreen({ response, messages, onQuestion, composerProps, avatarProps, onConnectModel }) {
   const streamRef = useRef(null);
-  const recognizing = ["starting", "listening", "recognizing"].includes(composerProps.voiceState);
+  const recognizing = ["listening", "recognizing"].includes(composerProps.voiceState);
   const liveRecognitionText = composerProps.draft || (
     composerProps.voiceState === "starting"
       ? "正在打开麦克风…"
@@ -329,9 +422,10 @@ function ConversationScreen({ response, messages, onQuestion, composerProps, ava
                 <span><Waveform weight="bold" />小安 · {message.meta}</span>
                 <h1>{message.title}</h1>
                 <p>{message.text}</p>
+                {message.errorCode === "MODEL_NOT_CONFIGURED" && <button className="advisor-model-connect-trigger advisor-model-connect-trigger--message" type="button" onClick={onConnectModel}>管理员连接 DeepSeek</button>}
                 {index === messages.length - 1 && message.agents?.length > 0 && (
                   <div className="advisor-message__agents" aria-label="可用业务智能体">
-                    {message.agents.map((agent) => <button type="button" key={`${agent.id}-${agent.label}`} onClick={() => onQuestion(agent.id, agent.label)}>{agent.label}<ArrowRight weight="bold" /></button>)}
+                    {message.agents.map((agent) => <button type="button" key={`${agent.id}-${agent.label}`} onClick={() => onQuestion(agent.id, agent.question)}>{agent.label}<ArrowRight weight="bold" /></button>)}
                   </div>
                 )}
               </article>
@@ -343,7 +437,7 @@ function ConversationScreen({ response, messages, onQuestion, composerProps, ava
         )}
           {recognizing && (
             <article className="advisor-message advisor-message--user advisor-message--recognizing" role="status">
-              <span><Waveform weight="bold" />您 · 正在识别</span>
+              <span><DotsThree className="advisor-recognizing-icon" weight="bold" />您 · 正在识别</span>
               <p>{liveRecognitionText}</p>
             </article>
           )}
@@ -472,12 +566,204 @@ function ExitDialog({ onClose }) {
   );
 }
 
+function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpenMcp }) {
+  const keyRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const [apiKey, setApiKey] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [connectionComplete, setConnectionComplete] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  useEffect(() => {
+    keyRef.current?.focus();
+    return () => window.clearTimeout(closeTimerRef.current);
+  }, []);
+
+  const save = async () => {
+    const key = apiKey.trim();
+    if (!key) {
+      setMessage("请输入 DeepSeek API 密钥。");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
+    try {
+      const api = deepSeekConfigurationApi();
+      const saved = await api.save(key);
+      if (!saved?.ok) throw new Error("密钥未能保存");
+      const status = await api.status();
+      if (!status?.configured) throw new Error("保存后未检测到连接状态");
+      setApiKey("");
+      onConfigurationChange(true);
+      setConnectionComplete(true);
+      setMessage("已连接，正在返回提问界面。");
+      closeTimerRef.current = window.setTimeout(onClose, 700);
+    } catch (error) {
+      setMessage(error?.message || "连接失败，请检查密钥后重试。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clear = async () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+      setMessage("再次点击“确认清除”才会移除本机密钥。");
+      return;
+    }
+    setSaving(true);
+    setMessage("");
+    try {
+      const api = deepSeekConfigurationApi();
+      await api.clear();
+      const status = await api.status();
+      if (status?.configured) throw new Error("密钥尚未清除，请稍后重试");
+      onConfigurationChange(false);
+      setConnectionComplete(false);
+      setConfirmClear(false);
+      setMessage("本机密钥已清除。");
+    } catch (error) {
+      setMessage(error?.message || "清除失败，请稍后重试。");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape" && !saving) onClose(); }}>
+      <section className="advisor-exit-dialog advisor-model-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-model-setup-title" aria-describedby="advisor-model-setup-description">
+        <button className="advisor-dialog-close" type="button" onClick={onClose} disabled={saving} aria-label="关闭"><X weight="bold" /></button>
+        <span className="advisor-exit-dialog__icon"><LockKey weight="duotone" /></span>
+        <p>终端管理</p>
+        <h2 id="advisor-model-setup-title">连接 DeepSeek</h2>
+        <small id="advisor-model-setup-description">密钥仅供本机使用：桌面版加密保存；网页预览仅由本机服务读取，不会写入浏览器或发布包。</small>
+        {connectionComplete ? (
+          <div className="advisor-model-setup-success" role="status" aria-live="polite">
+            <CheckCircle weight="fill" />
+            <strong>连接成功</strong>
+            <span>正在返回提问界面</span>
+          </div>
+        ) : (
+          <>
+            <label className="advisor-model-key-label" htmlFor="advisor-deepseek-key">DeepSeek API 密钥</label>
+            <div className="advisor-composer__input-surface advisor-model-key-field">
+              <input id="advisor-deepseek-key" ref={keyRef} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" spellCheck="false" disabled={saving} />
+            </div>
+            <button data-testid="advisor-deepseek-save" className="advisor-exit-submit" type="button" onClick={save} disabled={saving}>{saving ? "正在保存…" : "保存并连接"}</button>
+            {configured && <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={saving}>{confirmClear ? "确认清除" : "清除本机密钥"}</button>}
+            <button data-testid="advisor-open-mcp-config" className="advisor-auth-secondary" type="button" onClick={onOpenMcp} disabled={saving}>配置业务数据服务</button>
+            {message && <div className={`advisor-pin-message ${message.startsWith("本机密钥已") ? "is-success" : ""}`} role="status" aria-live="polite">{message}</div>}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function McpSetupDialog({ onClose, onBack }) {
+  const api = useMemo(() => mcpConfigurationApi(), []);
+  const names = Object.keys(mcpServiceLabels);
+  const [urls, setUrls] = useState(() => Object.fromEntries(names.map((name) => [name, ""])));
+  const [locked, setLocked] = useState(() => Object.fromEntries(names.map((name) => [name, false])));
+  const [token, setToken] = useState("");
+  const [probe, setProbe] = useState(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    if (!api) {
+      setMessage("业务数据配置仅在桌面应用中提供。");
+      return;
+    }
+    const status = await api.status();
+    setUrls(Object.fromEntries(names.map((name) => [name, status?.servers?.[name]?.url || ""])));
+    setLocked(Object.fromEntries(names.map((name) => [name, Boolean(status?.servers?.[name]?.locked)])));
+  }, [api]);
+
+  useEffect(() => { void loadStatus().catch((error) => setMessage(error?.message || "读取业务连接状态失败。")); }, [loadStatus]);
+
+  const payload = () => Object.fromEntries(names.map((name) => [name, { url: urls[name], token }]));
+  const save = async () => {
+    if (!api) return;
+    setBusy(true); setMessage(""); setProbe(null);
+    try {
+      const result = await api.save(payload());
+      setProbe(result.probe);
+      setToken("");
+      await loadStatus();
+      setMessage(result.probe?.ok ? "业务数据服务 5/5 已连接。" : `配置已保存，当前 ${result.probe?.connectedCount || 0}/5 个服务通过检测。`);
+    } catch (error) {
+      setMessage(error?.message || "保存或检测失败，请检查地址后重试。");
+    } finally { setBusy(false); }
+  };
+  const test = async () => {
+    if (!api) return;
+    setBusy(true); setMessage("");
+    try {
+      const result = await api.test(payload());
+      setProbe(result);
+      setMessage(result.ok ? "业务数据服务 5/5 已连接。" : `当前 ${result.connectedCount || 0}/5 个服务通过检测。`);
+    } catch (error) { setMessage(error?.message || "连接检测失败。"); }
+    finally { setBusy(false); }
+  };
+  const clear = async () => {
+    if (!confirmClear) { setConfirmClear(true); setMessage("再次点击“确认清除”才会移除本机业务连接。环境变量管理的地址不会被清除。"); return; }
+    if (!api) return;
+    setBusy(true);
+    try {
+      await api.clear();
+      setProbe(null); setToken(""); setConfirmClear(false);
+      await loadStatus();
+      setMessage("本机业务连接已清除。");
+    } catch (error) { setMessage(error?.message || "清除失败，请稍后重试。"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape" && !busy) onClose(); }}>
+      <section className="advisor-exit-dialog advisor-model-setup-dialog advisor-mcp-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-mcp-setup-title">
+        <button className="advisor-dialog-close" type="button" onClick={onClose} disabled={busy} aria-label="关闭"><X weight="bold" /></button>
+        <span className="advisor-exit-dialog__icon"><Buildings weight="duotone" /></span>
+        <p>终端管理</p>
+        <h2 id="advisor-mcp-setup-title">连接业务数据服务</h2>
+        <small>五项服务全部通过工具发现后才算业务已连接。地址保存在本机；共享令牌不会显示在状态页。</small>
+        <div className="advisor-mcp-fields">
+          {names.map((name) => {
+            const result = probe?.servers?.[name];
+            return <label className="advisor-mcp-field" key={name}>
+              <span>{mcpServiceLabels[name]}{locked[name] ? " · 启动环境管理" : ""}</span>
+              <input data-testid={`advisor-mcp-url-${name}`} type="url" value={urls[name]} onChange={(event) => setUrls((current) => ({ ...current, [name]: event.target.value }))} placeholder="https://…/mcp" disabled={busy || locked[name]} autoComplete="off" spellCheck="false" />
+              {result && <small className={result.connected ? "is-success" : "is-error"}>{result.connected ? `已连接 · ${result.toolCount} 个工具` : result.error || "未通过"}</small>}
+            </label>;
+          })}
+          <label className="advisor-mcp-field">
+            <span>共享 Bearer Token</span>
+            <input data-testid="advisor-mcp-token" type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="留空则保留已保存令牌" disabled={busy} autoComplete="off" spellCheck="false" />
+          </label>
+        </div>
+        <button data-testid="advisor-mcp-save" className="advisor-exit-submit" type="button" onClick={save} disabled={busy}>{busy ? "正在检测…" : "保存并检测 5 项服务"}</button>
+        <div className="advisor-mcp-actions">
+          <button className="advisor-auth-secondary" type="button" onClick={test} disabled={busy}>仅重新检测</button>
+          <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={busy}>{confirmClear ? "确认清除" : "清除本机配置"}</button>
+          <button className="advisor-auth-secondary" type="button" onClick={onBack} disabled={busy}>返回模型连接</button>
+        </div>
+        {message && <div className={`advisor-pin-message ${message.includes("5/5 已连接") || message.includes("已清除") ? "is-success" : ""}`} role="status" aria-live="polite">{message}</div>}
+      </section>
+    </div>
+  );
+}
+
 export function StationAdvisorApp() {
   const [screen, setScreen] = useState("home");
   const [responseId, setResponseId] = useState("");
   const [largeText, setLargeText] = useState(false);
   const [muted, setMuted] = useState(false);
   const [showExit, setShowExit] = useState(false);
+  const [showModelSetup, setShowModelSetup] = useState(false);
+  const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [modelConfigured, setModelConfigured] = useState(null);
   const [expandedPoints, setExpandedPoints] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState([]);
@@ -496,6 +782,7 @@ export function StationAdvisorApp() {
   const listeningOperationRef = useRef(false);
   const submittingRef = useRef(false);
   const agentRunRef = useRef("");
+  const answerSequenceRef = useRef(0);
   const [keyboardMode, setKeyboardMode] = useState(false);
   const {
     analyserRef: speechAnalyserRef,
@@ -512,8 +799,18 @@ export function StationAdvisorApp() {
   screenRef.current = screen;
   showExitRef.current = showExit;
 
+  useEffect(() => {
+    let active = true;
+    void deepSeekConfigurationApi().status().then((status) => {
+      if (active) setModelConfigured(Boolean(status?.configured));
+    }).catch(() => {
+      if (active) setModelConfigured(false);
+    });
+    return () => { active = false; };
+  }, []);
+
   const response = useMemo(() => responseId ? responses[responseId] : null, [responseId]);
-  const voiceBusy = ["starting", "listening", "recognizing"].includes(voiceState);
+  const voiceBusy = ["starting", "standby", "listening", "recognizing"].includes(voiceState);
 
   const cancelAutoSubmit = useCallback(() => {
     return undefined;
@@ -564,8 +861,11 @@ export function StationAdvisorApp() {
   }, [speak, stopSpeaking, stopVoice]);
 
   const askQuestion = useCallback(async (id, userText = "") => {
+    const answerSequence = answerSequenceRef.current + 1;
+    answerSequenceRef.current = answerSequence;
     stopVoice({ discard: true });
     stopSpeaking();
+    setAutoVoiceEnabled(false);
     draftRevisionRef.current += 1;
     draftRef.current = "";
     setDraft("");
@@ -579,12 +879,24 @@ export function StationAdvisorApp() {
     setResponseId(nextResponseId);
     setScreen("conversation");
     let nextResponse = fallbackResponse;
-    if (window.kioskBridge?.agentTurn) {
+    let memberAuthorizationRequired = false;
+    const runAgentTurn = window.kioskBridge?.agentTurn
+      ? (payload) => window.kioskBridge.agentTurn(payload)
+      : async (payload) => {
+        const response = await fetch("/api/agent/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error("智能体服务暂时不可用");
+        return response.json();
+      };
+    if (runAgentTurn) {
       if (agentRunRef.current) void window.kioskBridge.cancelAgentTurn?.(agentRunRef.current);
       const runId = `advisor-${messageId}`;
       agentRunRef.current = runId;
       try {
-        const result = await window.kioskBridge.agentTurn({
+        const result = await runAgentTurn({
           runId,
           sessionId: "station-advisor",
           turnId: `turn-${messageId}`,
@@ -592,26 +904,74 @@ export function StationAdvisorApp() {
           actor: { role: "anonymous", authLevel: "none", subjectToken: null, scopes: [] },
         });
         if (agentRunRef.current !== runId) return;
-        nextResponse = result?.status === "auth_required" ? responses.points : responseFromHarness(result, fallbackResponse);
+        memberAuthorizationRequired = isMemberAuthorizationRequired(result);
+        nextResponse = memberAuthorizationRequired
+          ? responses.points
+          : result?.status === "auth_required"
+            ? personalHealthAuthorizationResponse
+            : responseFromHarness(result, fallbackResponse);
       } catch {
-        nextResponse = fallbackResponse;
+        nextResponse = responseFromHarness({ ok: false, error: { code: "AGENT_UNAVAILABLE" } }, fallbackResponse);
       } finally {
         if (agentRunRef.current === runId) agentRunRef.current = "";
       }
     }
-    setMessages((current) => [...current, { id: `${messageId}-assistant`, role: "assistant", title: nextResponse.title, text: nextResponse.body, meta: nextResponse.meta, agents: nextResponse.agents }]);
+    if (nextResponse.errorCode === "MODEL_NOT_CONFIGURED") {
+      setModelConfigured(false);
+      setAutoVoiceEnabled(false);
+      voiceStateRef.current = "paused";
+      setVoiceState("paused");
+      setVoiceMessage("大模型未连接，已暂停自动聆听");
+    }
+    setMessages((current) => {
+      const cleaned = current.filter((message) => !(message.role === "user" && !/[\p{L}\p{N}]/u.test(message.text || "")));
+      return [...cleaned, { id: `${messageId}-assistant`, role: "assistant", title: nextResponse.title, text: nextResponse.body, meta: nextResponse.meta, agents: nextResponse.agents, errorCode: nextResponse.errorCode }];
+    });
     const speech = speak(`${nextResponse.title}。${nextResponse.body}`);
-    if (id === "points") {
+    if (memberAuthorizationRequired) {
       setAutoVoiceEnabled(false);
       void Promise.resolve(speech).then(() => new Promise((resolve) => window.setTimeout(resolve, 500))).then(() => {
         if (screenRef.current === "conversation") setScreen("consent");
       });
+    } else {
+      void Promise.resolve(speech).finally(() => {
+        if (answerSequence !== answerSequenceRef.current || nextResponse.errorCode === "MODEL_NOT_CONFIGURED") return;
+        if (screenRef.current !== "home" && screenRef.current !== "conversation") return;
+        setAutoVoiceEnabled(true);
+        voiceStateRef.current = "idle";
+        setVoiceState("idle");
+        setVoiceMessage("");
+      });
     }
   }, [speak, stopSpeaking, stopVoice]);
+
+  const handleModelConfigurationChange = useCallback((configured) => {
+    setModelConfigured(configured);
+    if (configured) {
+      setAutoVoiceEnabled(true);
+      voiceStateRef.current = "idle";
+      setVoiceState("idle");
+      setVoiceMessage("大模型已连接，可以开始提问");
+    } else {
+      setAutoVoiceEnabled(false);
+      voiceStateRef.current = "paused";
+      setVoiceState("paused");
+      setVoiceMessage("大模型连接已清除");
+    }
+  }, []);
 
   const submitText = useCallback((value) => {
     const text = String(value || "").trim();
     if (!text || submittingRef.current) return;
+    if (!/[\p{L}\p{N}]/u.test(text)) {
+      draftRevisionRef.current += 1;
+      draftRef.current = "";
+      setDraft("");
+      setVoiceMessage("没有听清，请再说一次");
+      voiceStateRef.current = "idle";
+      setVoiceState("idle");
+      return;
+    }
     submittingRef.current = true;
     cancelAutoSubmit();
     askQuestion(resolveAdvisorIntent(text), text);
@@ -623,7 +983,7 @@ export function StationAdvisorApp() {
     recognitionRef.current = null;
     recordingAbortRef.current = null;
     cancelAutoSubmit();
-    const recognizedText = String(text || "").trim();
+    const recognizedText = String(text || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 120);
     if (!recognizedText) {
       setVoiceMessage("没有听清，我会继续听，您也可以直接输入");
       voiceStateRef.current = "idle";
@@ -669,25 +1029,32 @@ export function StationAdvisorApp() {
       setVoiceState(nextState);
     };
 
-    const recordLocally = async (recognize) => {
+    const recordLocally = async (recognize, recognizePreview) => {
       const controller = new AbortController();
       recordingAbortRef.current = controller;
       const recording = await recordSpeech({
-        maxDurationMs: 45000,
-        maxIdleMs: 12000,
-        silenceMs: 1100,
-        previewIntervalMs: 900,
-        previewMaxDurationMs: 8000,
+        maxDurationMs: 15000,
+        maxIdleMs: 30000,
+        silenceMs: 600,
+        preRollMs: automatic ? 900 : 420,
+        vadOptions: automatic ? { calibrationFrames: 8, activationFrames: 4, quietFramesBeforeActivation: 4 } : undefined,
+        previewIntervalMs: 500,
+        previewMaxDurationMs: 6000,
         signal: controller.signal,
         onReady: () => {
           if (operationId !== operationIdRef.current) return;
+          voiceStateRef.current = "standby";
+          setVoiceState("standby");
+        },
+        onSpeechStart: () => {
+          if (operationId !== operationIdRef.current) return;
           voiceStateRef.current = "listening";
           setVoiceState("listening");
+          setVoiceMessage("请继续说话");
         },
-        onSpeechStart: () => operationId === operationIdRef.current && setVoiceMessage("请继续说话"),
-        onPreview: window.kioskBridge?.recognizePreviewPcm
+        onPreview: recognizePreview
           ? async ({ samples, sampleRate }) => {
-            const preview = await window.kioskBridge.recognizePreviewPcm(samples, sampleRate);
+            const preview = await recognizePreview(samples, sampleRate);
             if (operationId !== operationIdRef.current || voiceStateRef.current !== "listening" || !preview?.text) return;
             const previewText = String(preview.text).trim();
             draftRef.current = previewText;
@@ -698,7 +1065,7 @@ export function StationAdvisorApp() {
       if (operationId !== operationIdRef.current) return;
       recordingAbortRef.current = null;
       if (!recording.heardSpeech || !recording.samples.length) {
-        fail("没有听到清晰语音，我会继续听，您也可以直接输入", { recoverable: true });
+        fail("暂时没有检测到声音，您开口后我会继续", { recoverable: true });
         return;
       }
       voiceStateRef.current = "recognizing";
@@ -723,7 +1090,7 @@ export function StationAdvisorApp() {
         await recordLocally(async (recording) => {
           const result = await window.kioskBridge.recognizePcm(recording.samples, recording.sampleRate);
           return result;
-        });
+        }, (samples, sampleRate) => window.kioskBridge.recognizePreviewPcm(samples, sampleRate));
       } catch (error) {
         fail(error?.message || "麦克风暂时不可用，您可以直接输入");
       }
@@ -742,6 +1109,14 @@ export function StationAdvisorApp() {
           if (!response.ok || !String(response.headers.get("content-type") || "").includes("application/json")) {
             throw new Error("本地语音识别暂时不可用");
           }
+          return response.json();
+        }, async (samples) => {
+          const response = await fetch("/api/speech/recognize-preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream", Accept: "application/json" },
+            body: samples.buffer,
+          });
+          if (!response.ok || !String(response.headers.get("content-type") || "").includes("application/json")) return null;
           return response.json();
         });
       } catch (error) {
@@ -781,10 +1156,15 @@ export function StationAdvisorApp() {
       recognition.interimResults = true;
       recognition.onstart = () => {
         if (operationId !== operationIdRef.current) return;
+        voiceStateRef.current = "standby";
+        setVoiceState("standby");
+      };
+      recognition.onspeechstart = () => {
+        if (operationId !== operationIdRef.current) return;
         voiceStateRef.current = "listening";
         setVoiceState("listening");
+        setVoiceMessage("已经听到，请继续说");
       };
-      recognition.onspeechstart = () => { if (operationId === operationIdRef.current) setVoiceMessage("已经听到，请继续说"); };
       recognition.onresult = (event) => {
         if (operationId !== operationIdRef.current) return;
         let finalText = "";
@@ -830,12 +1210,12 @@ export function StationAdvisorApp() {
 
   useEffect(() => {
     const conversationalScreen = screen === "home" || screen === "conversation";
-    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || keyboardMode || speaking || speechPreparing) return undefined;
+    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showModelSetup || showMcpSetup || keyboardMode || speaking || speechPreparing) return undefined;
     const retrying = Boolean(voiceMessage);
     const delayMs = retrying ? advisorInteractionRetryDelayMs : screen === "home" ? 650 : 1050;
     autoListenTimerRef.current = window.setTimeout(() => startListening({ automatic: true }), delayMs);
     return () => window.clearTimeout(autoListenTimerRef.current);
-  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
+  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
 
   useEffect(() => () => {
     operationIdRef.current += 1;
@@ -849,6 +1229,7 @@ export function StationAdvisorApp() {
   }, [cancelAutoSubmit]);
 
   const goHome = useCallback(() => {
+    answerSequenceRef.current += 1;
     if (agentRunRef.current) void window.kioskBridge?.cancelAgentTurn?.(agentRunRef.current);
     agentRunRef.current = "";
     void window.kioskBridge?.clearAgentSession?.("station-advisor");
@@ -879,6 +1260,8 @@ export function StationAdvisorApp() {
 
   const composerStatus = voiceState === "starting"
     ? "正在打开麦克风…"
+    : voiceState === "standby"
+      ? "等待您开口"
     : voiceState === "listening"
       ? (voiceMessage || "正在听，请直接说话")
       : voiceState === "recognizing"
@@ -886,16 +1269,38 @@ export function StationAdvisorApp() {
         : speechPreparing
           ? "正在准备本地语音回答"
           : speaking
-            ? "小安正在回答，点麦克风可以打断"
+            ? "小安正在回答"
             : voiceState === "paused" || !autoVoiceEnabled
-              ? "语音已暂停，点麦克风继续"
+              ? modelConfigured === false
+                ? "大模型未连接，点右侧连接"
+                : "语音已暂停"
               : voiceMessage || "自动聆听已开启，请直接说话";
+
+  const openTerminalManagement = () => {
+    stopVoice({ discard: true });
+    stopSpeaking();
+    setAutoVoiceEnabled(false);
+    setKeyboardMode(false);
+    setShowMcpSetup(false);
+    setShowModelSetup(true);
+  };
+  const closeTerminalManagement = () => {
+    setShowModelSetup(false);
+    setShowMcpSetup(false);
+    if (modelConfigured !== false) {
+      setAutoVoiceEnabled(true);
+      voiceStateRef.current = "idle";
+      setVoiceState("idle");
+      setVoiceMessage("");
+    }
+  };
 
   const composerProps = {
     draft,
     status: composerStatus,
     voiceState,
     autoVoiceEnabled,
+    modelConfigured,
     keyboardMode,
     speaking,
     preparing: speechPreparing,
@@ -903,7 +1308,6 @@ export function StationAdvisorApp() {
     onFocus: () => {
       setKeyboardMode(true);
       cancelAutoSubmit();
-      stopSpeaking();
       if (voiceBusy || listeningOperationRef.current || voiceStateRef.current === "countdown") stopVoice({ discard: true });
       const nextState = draftRef.current ? "editing" : "idle";
       voiceStateRef.current = nextState;
@@ -913,7 +1317,6 @@ export function StationAdvisorApp() {
     onKeyboard: () => {
       setKeyboardMode(true);
       cancelAutoSubmit();
-      stopSpeaking();
       if (voiceBusy || listeningOperationRef.current || voiceStateRef.current === "countdown") stopVoice({ discard: true });
       const nextState = draftRef.current ? "editing" : "idle";
       voiceStateRef.current = nextState;
@@ -923,20 +1326,10 @@ export function StationAdvisorApp() {
     onMic: () => {
       setKeyboardMode(false);
       if (speaking || speechPreparing) {
-        stopSpeaking();
         setAutoVoiceEnabled(true);
         voiceStateRef.current = "idle";
         setVoiceState("idle");
-        setVoiceMessage("回答已暂停，请直接说话");
-        void startListening();
-        return;
-      }
-      if (voiceBusy || listeningOperationRef.current) {
-        stopVoice({ discard: true });
-        setAutoVoiceEnabled(false);
-        voiceStateRef.current = "paused";
-        setVoiceState("paused");
-        setVoiceMessage("语音已暂停，点麦克风继续");
+        setVoiceMessage("回答结束后将自动聆听");
         return;
       }
       if (!autoVoiceEnabled || voiceStateRef.current === "paused") {
@@ -947,6 +1340,7 @@ export function StationAdvisorApp() {
       }
       void startListening();
     },
+    onConfigureModel: openTerminalManagement,
     onSubmit: () => submitText(draft),
   };
 
@@ -959,7 +1353,7 @@ export function StationAdvisorApp() {
     setShowExit(true);
   };
 
-  const listening = ["starting", "listening", "recognizing"].includes(voiceState);
+  const listening = ["listening", "recognizing"].includes(voiceState);
   const avatarStatus = speaking || speechPreparing
     ? "小安正在回答"
     : listening
@@ -984,8 +1378,8 @@ export function StationAdvisorApp() {
       </div>
       <div className={`advisor-shell advisor-screen-${screen} ${largeText ? "is-large-text" : ""} ${keyboardMode && (screen === "home" || screen === "conversation") ? "has-soft-keyboard" : ""}`}>
         {screen !== "home" && screen !== "conversation" && <AdvisorHeader screen={screen} largeText={largeText} muted={muted} onHome={goHome} onLargeText={() => setLargeText((value) => !value)} onMute={() => setMuted((value) => !value)} onExit={openExit} />}
-        {screen === "home" && <HomeScreen onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} />}
-        {screen === "conversation" && <ConversationScreen response={response} messages={messages} onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} />}
+        {screen === "home" && <HomeScreen onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} modelConfigured={modelConfigured} onConnectModel={openTerminalManagement} />}
+        {screen === "conversation" && <ConversationScreen response={response} messages={messages} onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} onConnectModel={openTerminalManagement} />}
         {screen === "consent" && <ConsentScreen avatarProps={avatarProps} onCancel={() => { setAutoVoiceEnabled(true); setScreen("conversation"); }} onContinue={() => setScreen("scan")} />}
         {screen === "scan" && <ScanScreen avatarProps={avatarProps} onComplete={() => setScreen("member")} onCancel={() => { setAutoVoiceEnabled(true); setScreen("conversation"); }} />}
         {screen === "member" && <MemberScreen avatarProps={avatarProps} expanded={expandedPoints} onToggleExpanded={() => setExpandedPoints((value) => !value)} onFinish={goHome} />}
@@ -997,9 +1391,11 @@ export function StationAdvisorApp() {
             handleDraftChange("");
             setKeyboardMode(false);
           }}
-          onSubmit={() => submitText(draftRef.current)}
+          onSubmit={(value) => submitText(value || draftRef.current)}
         />
         {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
+        {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} />}
+        {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowModelSetup(true); }} />}
       </div>
     </div>
   );

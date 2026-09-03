@@ -40,7 +40,7 @@ function createSpeechService({ app }) {
       ready: missing.length === 0,
       provider: "sherpa-onnx",
       asrModel: "SenseVoice Small INT8",
-      asrPreview: { mode: "rolling-offline", intervalMs: 900, maxWindowSeconds: 8 },
+      asrPreview: { mode: "rolling-offline", intervalMs: 500, maxWindowSeconds: 6 },
       lipAlignment: { mode: "vits-lexicon-pcm-live", provider: "VITS lexicon + PCM envelope", offlineAudit: "SenseVoice character timestamps" },
       ttsModel: "VITS zh-ll default female voice",
       ttsStreaming: { enabled: true, mode: "balanced-progressive-pcm-chunks", cancellation: true, parallelPrefetch: ttsWorkerCount, chunkChars: { minimum: 10, maximum: 24 } },
@@ -136,7 +136,7 @@ function createSpeechService({ app }) {
     if (previewInFlight) return { ok: false, busy: true };
     const source = input?.samples;
     const samples = Float32Array.from(source || []);
-    if (samples.length < 16000 || samples.length > 16000 * 10) return { ok: false, skipped: true };
+    if (samples.length < 8000 || samples.length > 16000 * 10) return { ok: false, skipped: true };
     previewInFlight = true;
     try {
       const result = await request("recognize", { samples, sampleRate: input?.sampleRate || 16000 }, 15000, [samples.buffer]);

@@ -932,3 +932,165 @@ final result: passed (Harness M1 local Agent Runtime, policy, tool execution, fr
 - 真实 Electron GUI/CDP 验收验证 UI 问答写入同一会话、IPC 主动清除后 turns 为 0；`qa/harness-memory-electron-20260902/report.json` 为 `PASS`、failures 0。
 
 final result: passed (Harness M2 bounded in-memory session context, sensitive redaction, expiry, explicit clear and unpacked macOS Electron GUI scope); durable consented memory, packaged Windows and production identity data remain pending
+
+# 2026-09-02 V1.5.8 未确认业务事实清理
+
+## Design Read 与 Taste 结论
+
+- 范围：保持现有 9:16 医疗蓝界面、对话结构和输入交互，只纠正业务回答的数据可信边界。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有页面布局、色彩、字号、消息气泡、语音和键盘交互，以及 DeepSeek 对真实 MCP 结果的自然语言组织能力。
+- 增强：本地未配置时使用清晰、适老且不暴露内部工具名的提示，明确说明不能猜测时间、地点和预约要求。
+- 删除：未经正式需求或生产业务源确认的服务、活动和会员 fixture 事实；失败回答下不再显示可能误导用户的业务标签。
+- 重做：无视觉重做；网络或 Agent 不可用时不再退回硬编码业务答案。
+
+## 自动化证据与边界
+
+- 聚焦回归 `31/31 PASS`；Node 全量回归 `199/199 PASS`。
+- Vite 生产构建通过，转换 `4581` 个模块。
+- 静态扫描确认运行源码与 Harness 不再包含此前的助餐/康复时间、楼层、预约和活动演示值。
+- 真实远端 MCP 数据进入 DeepSeek 回答合成的测试继续通过。
+- 未执行 packaged Electron 与真实远端 MCP GUI 验收；只有业务系统返回的数据才可作为最终站点事实。
+
+final result: passed (unverified local business facts removed, explicit unavailable state and regression scope); remote MCP and packaged GUI remain pending
+
+# 2026-09-02 V1.5.9 健康意图与新版 MCP 对齐
+
+## Design Read 与 Taste 结论
+
+- 范围：保持现有 9:16 医疗蓝布局和对话气泡，只纠正“普通症状 → 会员积分”的错误状态映射及业务智能体边界。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有左右比例、数字人、消息流、语音底座、键盘和会员积分授权页面。
+- 增强：一般症状由 DeepSeek 先做自然回应、必要澄清和急症红旗筛查；前端仅允许真实会员意图进入会员授权。
+- 删除：旧 6 MCP / 18 Tool 中已不在最新版交付范围的现场动作 MCP 与 2 个 Tool；移除任何 `auth_required` 一律渲染积分卡片的错误逻辑。
+- 重做：无视觉重做；MCP 注册表、字段类型和说明文档按最新版 5 MCP / 16 Tool 交付对齐。
+
+## 自动化与运行证据
+
+- 聚焦回归 `52/52 PASS`；Node 全量回归 `202/202 PASS`。
+- Vite 生产构建通过，转换 `4581` 个模块；Sites 产物生成成功。
+- 真实 DeepSeek 回合“头痛。”返回 `health.general`、`completed`、`toolTrace=[]`，回答先关联头痛并追问持续时间与伴随症状，不含会员/积分内容。
+- 对照回合“帮我查一下会员积分”返回 `member.points.self`、`auth_required`，会员授权流程仍保留。
+- 真实 MCP 端点、生产权限矩阵及 Windows packaged 仍未验收。
+
+final result: passed (general symptom routing, membership authorization isolation, latest 5-MCP/16-Tool catalog and local DeepSeek verification); production MCP and packaged GUI remain pending
+
+# 2026-09-02 V34 口型残影与闭嘴抖动开发候选
+
+## Design Read 与 Taste 结论
+
+- 范围：只修复既有 V34 摄影口型合成和验收工具，不改 9:16 布局、人物身份、五官映射、下巴高度、页面结构或素材源图。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=2`、`VISUAL_DENSITY=0`。
+- 保留：CLOSED∪目标外唇 MediaPipe 联合 alpha、单组局部 RGB 偏移、人物身份底图连续 1 px 下颌网格、单主导摄影嘴型、鼻/颈/肩锁定。
+- 增强：最终 mouth strip 覆盖完整联合 alpha 的左右范围；短于 72 ms 的时间戳 CLOSED 闪断不再让正在说话的嘴连续两帧闭合；最终窗口诊断按实时 rig rectangle 取同帧口鼻颏区域。
+- 删除：撤销运行时二次椭圆裁切；不采用 V32 逐像素差分、V30/V31 宽摄影皮肤椭圆或 V33 窄下巴带。
+- 重做：无视觉重设计、无五官或下巴几何重做。
+
+## 开发与运行证据
+
+- 聚焦回归：`46/46 PASS`；覆盖 Viseme 映射、时间线、两帧 CLOSED 去抖、V34 rig 合同和 compositor 实时裁剪。
+- 当前工作树全量 Node 回归：`195/195 PASS`；Electron 9 个 CJS 主进程文件语法检查通过。
+- 生产构建：Vite `4581 modules transformed`，Sites 产物生成成功。
+- macOS unpacked Electron 本地离线 TTS：A 为 `STABLE_CAPTURED`，证据 `QA-EXTERNAL/DigitalHuman2D-20260902/v34-macos-dev-runtime-a-v7/report.json`；O 为 `STABLE_CAPTURED`，证据 `QA-EXTERNAL/DigitalHuman2D-20260902/v34-macos-dev-runtime-o-v6/report.json`。人工检查 A/O 最终窗口未见用户示意图中的大块嘴角残影，且下巴高度与 V34 原几何保持。
+- A-v6 为 `CANDIDATES_ONLY`，因为 4K 截图结束时状态已切回 CLOSED；按项目规则未计入通过证据。
+
+## 验收边界
+
+- 当前结论：开发候选完成、最终未验收。
+- macOS `packaged:false` 开发证据不能替代 Windows 2400×3840 unpacked/packaged Electron 连续 TTS、A/E/O/U、转场、性能与实体设备门禁。
+
+# 2026-09-03 V1.5.10 提交终态与首次聆听防误触
+
+## Design Read 与 Taste 结论
+
+- 范围：保留现有 9:16 冷白医疗蓝布局、数字人、对话气泡、语音底座和键盘，只修复提交后缺少回答终态与首次自动聆听误触。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：左右人物比例、消息布局、错误卡片样式、自动聆听和手动语音灵敏度。
+- 增强：首次自动聆听必须先完成环境校准并观察到连续安静窗口，再接受连续语音；连续提交即使得到相同系统错误，每个用户回合也有一条对应的小安终态。
+- 删除：删除会因历史同类错误卡片而吞掉当前助手消息的去重分支。
+- 重做：无视觉、布局、动效或口型重做。
+
+## 验证证据与边界
+
+- 聚焦测试 `34/34 PASS`；Node 全量 `203/203 PASS`。
+- Vite 生产构建通过，转换 `4581` 个模块；Sites 构建产物生成成功。
+- 本地浏览器启动后静置 8 秒保持 `standby / 等待您说话`，未生成用户消息或识别文本。
+- 连续键盘提交“助餐服务几点开始”“今天站点有什么活动”，在未配置大模型的环境中得到 `2` 条用户消息与 `2` 条明确错误终态，控制台错误与警告为 `0`。
+- 未执行 packaged Electron、Windows 实体麦克风或现场噪声验收；首次 VAD 防护仍需目标设备确认。
+
+final result: passed (accepted-turn terminal response, stricter first-listen arming, automated and local browser regression scope); packaged Windows microphone validation remains pending
+
+# 2026-09-03 V1.5.12 网页 DeepSeek 本机测试入口
+
+## Design Read 与 Taste 结论
+
+- 范围：不改变已确认的 9:16 冷白医疗蓝视觉、气泡、输入模块或动效；仅让已有“管理员连接 DeepSeek”弹窗在本机网页预览可完成相同配置流程。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有弹窗的标题、密码输入、成功/失败文本、关闭和二次清除确认。
+- 增强：说明网页预览密钥仅驻留本机进程内存、关闭预览自动清除，避免误解为浏览器或生产持久化。
+- 删除：网页端“只能在桌面端完成连接”的死路。
+- 重做：无视觉重做；功能采用本机受限代理，接口和密钥不暴露给页面脚本。
+
+## 验证边界
+
+- 本机接口验证：初始未配置、非法格式拒绝、临时测试值保存后二次读取、清除后二次读取均通过。
+- 自动验证：聚焦 `33/33 PASS`，全量 Node `204/204 PASS`，Vite `4581 modules transformed`，Sites 产物生成成功。
+- 未执行真实 DeepSeek 网络调用或浏览器实际密钥填写；需由操作者在本机预览中输入其密钥后确认业务回答。该能力只用于 Vite 本机测试，不随静态 Sites 发布。
+
+# 2026-09-03 V1.5.13 连接成功与阻断态校正
+
+- Design Read：保持既有冷白医疗蓝输入舱；`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：密码输入、保存后二次状态校验、连接弹窗与键盘入口。
+- 增强：成功后主按钮明确改为“已连接，开始提问”；模型未连接时右侧用有文字的“连接”动作，而不是仅靠图标。
+- 删除：大模型未连接时“点麦克风继续”的错误引导。
+- 重做：无布局、人物、动效或口型重做。聚焦 `33/33 PASS`，Vite `4581` modules transformed；实际真实密钥网络问答未验收。
+
+# 2026-09-03 V1.5.15 MCP 业务入口合同收紧
+
+## Design Read 与 Taste 结论
+
+- Design Read：9:16 适老站点咨询终端的对话追问入口必须表达真实可调用能力，而不是把模型自由文案伪装成业务服务；保持既有冷白医疗蓝与气泡下方跟随式标签。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：业务入口随对应小安回答滚动，不固定占据聊天上下文；图标、色彩、圆角与触控尺寸不变。
+- 增强：模型建议仅能以批准能力 ID 进入 UI，前端映射为稳定中文标签和受控追问文本，避免标签名称和点击行为漂移。
+- 删除：合同外的“联系工作人员”“人工转接”“查询对接指引”及任意自由生成业务标签。
+- 重做：无视觉、布局、动效或数字人重做。
+
+## 验证边界
+
+- Node 全量 `210/210 PASS`；覆盖最新 5 MCP / 16 Tool 目录、清单外建议过滤、受控点击文本和既有回退兼容。
+- Vite 生产构建通过，转换 `4581` 个模块；Sites 产物生成成功。
+- 未以真实 DeepSeek 回合或 GUI 复现截图中的合同外标签，未执行打包和 Windows 实机验证，均保留为待验。
+
+# 2026-09-03 V1.5.16 网页本机大模型配置
+
+## Design Read 与 Taste 结论
+
+- 范围：仅恢复本机网页预览在重启后的大模型可用性，不改变 9:16 终端布局、组件、视觉、动效或用户输入流程。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：页面只显示连接状态，密钥不出现在页面、可见文案、网络状态响应或产品包内。
+- 增强：Vite 从被忽略的本机 `.env.local` 读取预览密钥，重启后仍可进行网页测试。
+- 删除：重启预览服务后仅因内存丢失而需要再次录入密钥的重复操作。
+- 重做：无视觉重做。
+
+## 验证边界
+
+- 本机状态接口验证为 `configured:true`、`storage:local-preview`，未读取或输出密钥正文。
+- Node 全量 `212/212 PASS`；Vite `4581` 模块生产构建和 Sites 产物生成通过。
+- 未在本轮主动发送真实 DeepSeek 测试问题，未重新打包、未执行 Windows 实机验收。
+
+# 2026-09-03 V1.5.17 DeepSeek 保存成功反馈
+
+## Design Read 与 Taste 结论
+
+- 范围：只修正管理员配置的保存完成状态，不改变对话页、输入舱、数字人、语音或业务标签。
+- 参数：`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：既有冷白医疗蓝、锁形管理入口、保存后二次状态校验和显式关闭按钮。
+- 增强：保存成功后以同一配色显示简洁的“连接成功 / 正在返回提问界面”状态，并在 700ms 后自动关闭。
+- 删除：成功状态下与空密码输入框并存的“已连接，开始提问”按钮。
+- 重做：无页面布局或视觉体系重做。
+
+## 验证边界
+
+- Node 全量 `212/212 PASS`；Vite `4581` 模块生产构建和 Sites 产物生成通过。
+- 本机预览状态接口返回 `configured:true`、`storage:local-preview`；未发起真实 DeepSeek 问答、未重新打包或执行 Windows 实机验收。

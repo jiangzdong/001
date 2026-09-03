@@ -1,0 +1,1509 @@
+{
+  "generatedAt": "2026-09-03T02:49:03.117Z",
+  "mode": "runtime-css",
+  "targetViseme": "U",
+  "jawThreshold": 0.045,
+  "targetSampleCount": 3,
+  "runtime": {
+    "ok": true,
+    "version": "1.5.12",
+    "packaged": true,
+    "aiConfigured": false,
+    "speech": {
+      "ready": true,
+      "provider": "sherpa-onnx",
+      "asrModel": "SenseVoice Small INT8",
+      "asrPreview": {
+        "mode": "rolling-offline",
+        "intervalMs": 500,
+        "maxWindowSeconds": 6
+      },
+      "lipAlignment": {
+        "mode": "vits-lexicon-pcm-live",
+        "provider": "VITS lexicon + PCM envelope",
+        "offlineAudit": "SenseVoice character timestamps"
+      },
+      "ttsModel": "VITS zh-ll default female voice",
+      "ttsStreaming": {
+        "enabled": true,
+        "mode": "balanced-progressive-pcm-chunks",
+        "cancellation": true,
+        "parallelPrefetch": 1,
+        "chunkChars": {
+          "minimum": 10,
+          "maximum": 24
+        }
+      },
+      "voices": [
+        {
+          "id": "zh-ll-2",
+          "label": "小安默认女声",
+          "detail": "普通话女声",
+          "modelId": "zh-ll",
+          "sid": 2
+        }
+      ],
+      "offline": true,
+      "warmedModels": [
+        "zh-ll",
+        "sensevoice-alignment"
+      ],
+      "missing": []
+    },
+    "avatar": {
+      "ready": false,
+      "message": "本机 GPU 数字人服务未连接",
+      "consecutiveFailures": 4,
+      "circuitOpen": true,
+      "retryAfterMs": 30000
+    },
+    "activeAiRequests": 0,
+    "window": {
+      "x": 0,
+      "y": 34,
+      "width": 1710,
+      "height": 1073
+    },
+    "display": {
+      "id": 1,
+      "rotation": 0,
+      "scaleFactor": 2,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1710,
+        "height": 1107
+      },
+      "workArea": {
+        "x": 0,
+        "y": 34,
+        "width": 1710,
+        "height": 1009
+      }
+    },
+    "expectedKioskViewport": {
+      "width": 1200,
+      "height": 1920,
+      "contentRotation": 0
+    },
+    "recentMetrics": [
+      {
+        "at": "2026-09-03T02:48:36.379Z",
+        "stage": "runtime",
+        "event": "renderer_priority_warning",
+        "metrics": {}
+      },
+      {
+        "at": "2026-09-03T02:48:37.014Z",
+        "stage": "tts",
+        "event": "warmup_complete",
+        "metrics": {
+          "durationMs": 747.378,
+          "ok": true
+        }
+      },
+      {
+        "at": "2026-09-03T02:48:44.005Z",
+        "stage": "tts",
+        "event": "stream_complete",
+        "metrics": {
+          "durationMs": 493.57,
+          "firstChunkMs": 493.343,
+          "chunkCount": 1,
+          "ok": true,
+          "cancelled": false
+        }
+      },
+      {
+        "at": "2026-09-03T02:48:59.987Z",
+        "stage": "tts",
+        "event": "stream_complete",
+        "metrics": {
+          "durationMs": 538.009,
+          "firstChunkMs": 537.836,
+          "chunkCount": 1,
+          "ok": true,
+          "cancelled": false
+        }
+      },
+      {
+        "at": "2026-09-03T02:49:01.984Z",
+        "stage": "tts",
+        "event": "stream_complete",
+        "metrics": {
+          "durationMs": 240.051,
+          "firstChunkMs": 239.921,
+          "chunkCount": 1,
+          "ok": true,
+          "cancelled": false
+        }
+      }
+    ],
+    "harness": {
+      "ready": true,
+      "tools": [
+        {
+          "name": "health_risk_assessment_mcp.get_risk_assessment_context",
+          "description": "获取研判上下文",
+          "sensitivity": "personal",
+          "action": "health:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_risk_assessment_mcp",
+          "tool": "get_risk_assessment_context",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "businessId": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "seniorId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_risk_assessment_mcp.get_latest_health_labels",
+          "description": "获取最新标签与体征评估",
+          "sensitivity": "personal",
+          "action": "health:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_risk_assessment_mcp",
+          "tool": "get_latest_health_labels",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "tenantId": {
+                "type": "string"
+              },
+              "types": {
+                "type": "string"
+              },
+              "seniorId": {
+                "type": "string"
+              },
+              "orgId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tenantId",
+              "types",
+              "seniorId",
+              "orgId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_risk_assessment_mcp.get_indicator_evidence",
+          "description": "获取指标证据",
+          "sensitivity": "personal",
+          "action": "health:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_risk_assessment_mcp",
+          "tool": "get_indicator_evidence",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "signsTypeList": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "timeType": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "seniorId",
+              "signsTypeList"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_risk_assessment_mcp.save_risk_assessment_result",
+          "description": "保存研判结果",
+          "sensitivity": "personal",
+          "action": "health:write:self",
+          "timeoutMs": 5000,
+          "transport": "mcp",
+          "server": "health_risk_assessment_mcp",
+          "tool": "save_risk_assessment_result",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "string"
+              },
+              "riskAssessmentDraft": {
+                "type": "object"
+              },
+              "idempotencyKey": {
+                "type": "string"
+              },
+              "orgId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seniorId",
+              "riskAssessmentDraft",
+              "idempotencyKey"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_evaluation_service_mcp_cms.get_senior_profile",
+          "description": "获取长者档案摘要",
+          "sensitivity": "personal",
+          "action": "member:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_evaluation_service_mcp_cms",
+          "tool": "get_senior_profile",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "seniorId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_evaluation_service_mcp_cms.get_health_evaluation_results",
+          "description": "获取健康测评结果",
+          "sensitivity": "personal",
+          "action": "health:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_evaluation_service_mcp_cms",
+          "tool": "get_health_evaluation_results",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "assessmentType": {
+                "type": "string"
+              },
+              "latestOnly": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "seniorId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_evaluation_service_mcp_cms.get_station_service_detail",
+          "description": "获取单项站点服务详情，返回该服务的时间、地点和预约信息",
+          "sensitivity": "public",
+          "action": null,
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_evaluation_service_mcp_cms",
+          "tool": "get_station_service_detail",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "serviceId": {
+                "type": "string",
+                "description": "由业务系统定义的服务 ID"
+              }
+            },
+            "required": [
+              "orgId",
+              "serviceId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "health_evaluation_service_mcp_cms.list_station_services_brief",
+          "description": "获取已启用站点服务简表，用于导览，不替代单项服务时间查询",
+          "sensitivity": "public",
+          "action": null,
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "health_evaluation_service_mcp_cms",
+          "tool": "list_station_services_brief",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "category": {
+                "type": "string"
+              },
+              "enabledOnly": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "orgId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "identity_permission_mcp.match_face_to_senior",
+          "description": "人脸匹配长者 ID",
+          "sensitivity": "personal",
+          "action": "identity:verify",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "identity_permission_mcp",
+          "tool": "match_face_to_senior",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "captureToken": {
+                "type": "string"
+              },
+              "consentId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "orgId",
+              "captureToken",
+              "consentId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "identity_permission_mcp.check_data_permission",
+          "description": "校验数据访问权限",
+          "sensitivity": "personal",
+          "action": "policy:evaluate",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "identity_permission_mcp",
+          "tool": "check_data_permission",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "operatorId": {
+                "type": "string"
+              },
+              "seniorId": {
+                "type": "integer"
+              },
+              "action": {
+                "type": "string"
+              },
+              "authToken": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "orgId",
+              "operatorId",
+              "seniorId",
+              "action"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "member_asset_mcp.get_member_points",
+          "description": "查询会员积分",
+          "sensitivity": "personal",
+          "action": "member:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "member_asset_mcp",
+          "tool": "get_member_points",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "authorizationId": {
+                "type": "string"
+              },
+              "includeLedger": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "seniorId",
+              "orgId",
+              "authorizationId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "member_asset_mcp.list_recharge_records",
+          "description": "查询充值记录",
+          "sensitivity": "personal",
+          "action": "member:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "member_asset_mcp",
+          "tool": "list_recharge_records",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "authorizationId": {
+                "type": "string"
+              },
+              "dateFrom": {
+                "type": "string"
+              },
+              "dateTo": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "seniorId",
+              "orgId",
+              "authorizationId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "member_asset_mcp.list_consumption_records",
+          "description": "查询消费记录",
+          "sensitivity": "personal",
+          "action": "member:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "member_asset_mcp",
+          "tool": "list_consumption_records",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "authorizationId": {
+                "type": "string"
+              },
+              "dateFrom": {
+                "type": "string"
+              },
+              "dateTo": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "seniorId",
+              "orgId",
+              "authorizationId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "member_asset_mcp.get_member_level",
+          "description": "查询会员等级",
+          "sensitivity": "personal",
+          "action": "member:read:self",
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "member_asset_mcp",
+          "tool": "get_member_level",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "seniorId": {
+                "type": "integer"
+              },
+              "orgId": {
+                "type": "integer"
+              },
+              "authorizationId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seniorId",
+              "orgId",
+              "authorizationId"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "station_content_mcp.search_station_knowledge",
+          "description": "检索站点公共知识",
+          "sensitivity": "public",
+          "action": null,
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "station_content_mcp",
+          "tool": "search_station_knowledge",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "query": {
+                "type": "string"
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "limit": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "orgId",
+              "query"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "name": "station_content_mcp.list_station_activities",
+          "description": "查询站点活动",
+          "sensitivity": "public",
+          "action": null,
+          "timeoutMs": 3000,
+          "transport": "mcp",
+          "server": "station_content_mcp",
+          "tool": "list_station_activities",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "orgId": {
+                "type": "integer"
+              },
+              "dateFrom": {
+                "type": "string"
+              },
+              "dateTo": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "cursor": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "orgId"
+            ],
+            "additionalProperties": true
+          }
+        }
+      ],
+      "activeRuns": 0,
+      "memory": {
+        "mode": "session_only",
+        "persistent": false,
+        "maxSessions": 64,
+        "maxTurns": 8,
+        "maxIdleMs": 1800000,
+        "sessions": 0
+      },
+      "mcp": {
+        "protocolVersion": "2025-06-18",
+        "mode": "local-unconfigured",
+        "servers": [
+          {
+            "name": "health_risk_assessment_mcp",
+            "configured": false,
+            "transport": "in-process"
+          },
+          {
+            "name": "health_evaluation_service_mcp_cms",
+            "configured": false,
+            "transport": "in-process"
+          },
+          {
+            "name": "identity_permission_mcp",
+            "configured": false,
+            "transport": "in-process"
+          },
+          {
+            "name": "member_asset_mcp",
+            "configured": false,
+            "transport": "in-process"
+          },
+          {
+            "name": "station_content_mcp",
+            "configured": false,
+            "transport": "in-process"
+          }
+        ]
+      },
+      "model": {
+        "provider": "deepseek",
+        "configured": false
+      }
+    }
+  },
+  "initial": {
+    "ready": true,
+    "speaking": false,
+    "viseme": "CLOSED",
+    "rigViseme": "CLOSED",
+    "textureFrame": "CLOSED",
+    "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+    "jawOpen": 0.106,
+    "chinOffsetPx": 0.751,
+    "rig": {
+      "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+      "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+      "opacity": "1",
+      "visibility": "visible",
+      "datasetRig": "local-mouth-chin-v34"
+    },
+    "fullBodyRect": {
+      "x": 737.640625,
+      "y": 10.059374809265137,
+      "width": 563.324951171875,
+      "height": 1001.58837890625
+    },
+    "rigRect": {
+      "x": 980.4515991210938,
+      "y": 173.41128540039062,
+      "width": 131.39068603515625,
+      "height": 60.46075439453125,
+      "canvasWidth": 339,
+      "canvasHeight": 156
+    }
+  },
+  "idleFaceClip": {
+    "x": 948.9178344726563,
+    "y": 125.04268188476561,
+    "width": 194.45821533203116,
+    "height": 163.24403686523436
+  },
+  "samples": [
+    {
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.213,
+        "chinOffsetPx": 1.22,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.185,
+        "chinOffsetPx": 1.036,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-01-0.213-U-0.185.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-1-0.185-rig.png",
+      "captureMode": "natural-local-tts-held-52ms-and-stable-before-and-after-capture"
+    }
+  ],
+  "attempts": [
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.206,
+        "chinOffsetPx": 1.199,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.213,
+        "chinOffsetPx": 1.22,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.185,
+        "chinOffsetPx": 1.036,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-01-0.213-U-0.185.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-01-0.206-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-01-0.206-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-01-0.206-mouth-layer.png",
+      "stable": true
+    },
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.162,
+        "chinOffsetPx": 0.916,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.118,
+        "chinOffsetPx": 0.742,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "CLOSED",
+        "rigViseme": "CLOSED",
+        "textureFrame": "CLOSED",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.083,
+        "chinOffsetPx": 0.607,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-02-0.118-CLOSED-0.083.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-02-0.162-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-02-0.162-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-02-0.162-mouth-layer.png",
+      "stable": false
+    },
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.173,
+        "chinOffsetPx": 1.031,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.188,
+        "chinOffsetPx": 1.126,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.163,
+        "chinOffsetPx": 0.982,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-03-0.188-U-0.163.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-03-0.173-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-03-0.173-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-03-0.173-mouth-layer.png",
+      "stable": true
+    },
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.163,
+        "chinOffsetPx": 0.933,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.125,
+        "chinOffsetPx": 0.783,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "CLOSED",
+        "rigViseme": "CLOSED",
+        "textureFrame": "CLOSED",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.13,
+        "chinOffsetPx": 0.996,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-04-0.125-CLOSED-0.130.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-04-0.163-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-04-0.163-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-04-0.163-mouth-layer.png",
+      "stable": false
+    },
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.228,
+        "chinOffsetPx": 1.311,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.228,
+        "chinOffsetPx": 1.294,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.201,
+        "chinOffsetPx": 1.121,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-05-0.228-U-0.201.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-05-0.228-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-05-0.228-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-05-0.228-mouth-layer.png",
+      "stable": true
+    },
+    {
+      "detected": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.177,
+        "chinOffsetPx": 0.994,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "before": {
+        "ready": true,
+        "speaking": true,
+        "viseme": "U",
+        "rigViseme": "U",
+        "textureFrame": "U",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.129,
+        "chinOffsetPx": 0.802,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "after": {
+        "ready": true,
+        "speaking": false,
+        "viseme": "CLOSED",
+        "rigViseme": "CLOSED",
+        "textureFrame": "CLOSED",
+        "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+        "jawOpen": 0.082,
+        "chinOffsetPx": 0.519,
+        "rig": {
+          "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+          "opacity": "1",
+          "visibility": "visible",
+          "datasetRig": "local-mouth-chin-v34"
+        },
+        "fullBodyRect": {
+          "x": 737.640625,
+          "y": 10.059374809265137,
+          "width": 563.324951171875,
+          "height": 1001.58837890625
+        },
+        "rigRect": {
+          "x": 980.4515991210938,
+          "y": 173.41128540039062,
+          "width": 131.39068603515625,
+          "height": 60.46075439453125,
+          "canvasWidth": 339,
+          "canvasHeight": 156
+        }
+      },
+      "faceClip": {
+        "x": 948.9178344726563,
+        "y": 125.04268188476561,
+        "width": 194.45821533203116,
+        "height": 163.24403686523436
+      },
+      "captureScale": 2.1598470359447837,
+      "composite": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-06-0.129-CLOSED-0.082.png",
+      "rigCanvas": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-06-0.177-rig-before.png",
+      "jawLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-06-0.177-jaw-layer.png",
+      "mouthLayer": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/u-attempt-06-0.177-mouth-layer.png",
+      "stable": false
+    }
+  ],
+  "idle": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/DigitalHuman2D-20260903/v1512-packaged-v34-U/idle-composite.png",
+  "final": {
+    "ready": true,
+    "speaking": false,
+    "viseme": "CLOSED",
+    "rigViseme": "CLOSED",
+    "textureFrame": "CLOSED",
+    "texturePolicy": "split-mouth-dominant-sharp-stable-buffer",
+    "jawOpen": 0.058,
+    "chinOffsetPx": 0.388,
+    "rig": {
+      "maskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+      "webkitMaskImage": "radial-gradient(42% 46% at 50% 54%, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 68%, rgba(0, 0, 0, 0.82) 82%, rgba(0, 0, 0, 0) 100%)",
+      "opacity": "1",
+      "visibility": "visible",
+      "datasetRig": "local-mouth-chin-v34"
+    },
+    "fullBodyRect": {
+      "x": 737.640625,
+      "y": 10.059374809265137,
+      "width": 563.324951171875,
+      "height": 1001.58837890625
+    },
+    "rigRect": {
+      "x": 980.4515991210938,
+      "y": 173.41128540039062,
+      "width": 131.39068603515625,
+      "height": 60.46075439453125,
+      "canvasWidth": 339,
+      "canvasHeight": 156
+    }
+  },
+  "result": "STABLE_CAPTURED"
+}

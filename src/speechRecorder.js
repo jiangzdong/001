@@ -49,11 +49,13 @@ export function computeRms(samples) {
   return Math.sqrt(energy / samples.length);
 }
 
-export function createAdaptiveVad({ floor = 0.00045, ceiling = 0.02, multiplier = 3.2, calibrationFrames = 4, activationFrames = 2 } = {}) {
+export function createAdaptiveVad({ floor = 0.00045, ceiling = 0.02, multiplier = 3.2, calibrationFrames = 4, activationFrames = 2, quietFramesBeforeActivation = 0 } = {}) {
   let noiseFloor = floor / multiplier;
   let calibrationEnergy = 0;
   let calibratedFrames = 0;
   let activeFrames = 0;
+  let quietFrames = 0;
+  let armed = quietFramesBeforeActivation === 0;
   return {
     observe(samples) {
       const rms = computeRms(samples);
@@ -66,8 +68,14 @@ export function createAdaptiveVad({ floor = 0.00045, ceiling = 0.02, multiplier 
         noiseFloor = noiseFloor * 0.94 + rms * 0.06;
       }
       const threshold = Math.min(ceiling, Math.max(floor, noiseFloor * multiplier));
+      if (!armed) {
+        quietFrames = calibratedFrames >= calibrationFrames && rms < threshold ? quietFrames + 1 : 0;
+        armed = quietFrames >= quietFramesBeforeActivation;
+        activeFrames = 0;
+        return { rms, threshold, speech: false, noiseFloor, activeFrames, armed };
+      }
       activeFrames = rms >= threshold ? activeFrames + 1 : 0;
-      return { rms, threshold, speech: activeFrames >= activationFrames, noiseFloor, activeFrames };
+      return { rms, threshold, speech: activeFrames >= activationFrames, noiseFloor, activeFrames, armed };
     },
     snapshot() {
       const threshold = Math.min(ceiling, Math.max(floor, noiseFloor * multiplier));
@@ -79,14 +87,15 @@ export function createAdaptiveVad({ floor = 0.00045, ceiling = 0.02, multiplier 
 export async function recordSpeech({
   maxDurationMs = 45000,
   maxIdleMs = 12000,
-  silenceMs = 1100,
+  silenceMs = 700,
   preRollMs = 420,
   onReady,
   onSpeechStart,
   onLevel,
   onPreview,
-  previewIntervalMs = 900,
-  previewMaxDurationMs = 8000,
+  previewIntervalMs = 500,
+  previewMaxDurationMs = 6000,
+  vadOptions,
   signal,
 } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前设备无法访问麦克风");
@@ -169,7 +178,7 @@ export async function recordSpeech({
     let lastSpeechAt = performance.now();
     let lastPreviewAt = 0;
     let previewInFlight = false;
-    const vad = createAdaptiveVad();
+    const vad = createAdaptiveVad(vadOptions);
 
     return await new Promise((resolve, reject) => {
       let settled = false;
@@ -200,8 +209,7 @@ export async function recordSpeech({
         }
       };
       finishRecording = () => settle();
-      maxTimer = setTimeout(finishRecording, maxDurationMs);
-      idleTimer = setTimeout(finishRecording, Math.min(maxDurationMs, maxIdleMs));
+      idleTimer = setTimeout(finishRecording, maxIdleMs);
       processor.onaudioprocess = (event) => {
         try {
           const input = event.inputBuffer.getChannelData(0);
@@ -221,6 +229,7 @@ export async function recordSpeech({
           if (activity.speech) {
             if (!heardSpeech) {
               clearTimeout(idleTimer);
+              maxTimer = setTimeout(finishRecording, maxDurationMs);
               heardSpeech = true;
               speechStartedAt = now;
               for (const buffered of preRoll) { chunks.push(buffered); length += buffered.length; }
@@ -232,7 +241,7 @@ export async function recordSpeech({
             lastSpeechAt = now;
           }
           const speechLengthMs = length / context.sampleRate * 1000;
-          if (onPreview && heardSpeech && speechLengthMs >= 650 && now - lastPreviewAt >= previewIntervalMs && !previewInFlight) {
+          if (onPreview && heardSpeech && speechLengthMs >= 450 && now - lastPreviewAt >= previewIntervalMs && !previewInFlight) {
             lastPreviewAt = now;
             previewInFlight = true;
             const samples = createPreviewSamples(chunks, context.sampleRate, { maxDurationMs: previewMaxDurationMs });
@@ -240,7 +249,7 @@ export async function recordSpeech({
               .catch(() => {})
               .finally(() => { previewInFlight = false; });
           }
-          if (heardSpeech && now - lastSpeechAt >= silenceMs && length / context.sampleRate > 0.7) finishRecording();
+          if (heardSpeech && now - lastSpeechAt >= silenceMs && length / context.sampleRate > 0.5) finishRecording();
         } catch (error) {
           settle(error);
         }

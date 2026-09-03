@@ -55,6 +55,10 @@ contextBridge.exposeInMainWorld("kioskBridge", {
   deepSeekStatus: () => ipcRenderer.invoke("deepseek:status"),
   saveDeepSeekKey: (key) => ipcRenderer.invoke("deepseek:save-key", key),
   clearDeepSeekKey: () => ipcRenderer.invoke("deepseek:clear-key"),
+  mcpConfigStatus: () => ipcRenderer.invoke("mcp:config-status"),
+  testMcpConfig: (servers) => ipcRenderer.invoke("mcp:test-config", { servers }),
+  saveMcpConfig: (servers) => ipcRenderer.invoke("mcp:save-config", { servers }),
+  clearMcpConfig: () => ipcRenderer.invoke("mcp:clear-config"),
   deepSeekChat: (payload) => ipcRenderer.invoke("deepseek:chat", Array.isArray(payload) ? { messages: payload } : payload),
   deepSeekChatStream: (payload, onChunk) => {
     const requestId = String(payload?.requestId || "");

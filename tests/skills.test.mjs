@@ -15,6 +15,22 @@ test("skill catalog exposes the three project capabilities", () => {
   assert.equal(new Set(skillCatalog.map((skill) => skill.entryScreen)).size, 3);
 });
 
+test("Harness active station skills are complete and exclude the legacy questionnaire", async () => {
+  const names = [
+    "station-advisor-global-v2",
+    "station-public-info-v1",
+    "member-self-service-v1",
+    "identity-and-permission-v1",
+    "health-general-guidance-v1",
+  ];
+  for (const name of names) {
+    const content = await readFile(new URL(`../skills/${name}/SKILL.md`, import.meta.url), "utf8");
+    assert.doesNotMatch(content, /TODO/);
+  }
+  const general = await readFile(new URL("../skills/health-general-guidance-v1/SKILL.md", import.meta.url), "utf8");
+  assert.doesNotMatch(general, /有限轮次合同|语音与选项必须等价|七个业务领域/);
+});
+
 test("assessment remains an eight-question, two-level flow", () => {
   assert.equal(assessmentQuestions.length, 8);
   assert.equal(calculateAssessmentResult([]).level, "routine");

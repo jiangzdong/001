@@ -1,6 +1,27 @@
 "use strict";
 
-const SAFE_NAME = /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/;
+const SAFE_NAME = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/;
+
+function matchesSchema(value, schema = {}) {
+  if (schema.oneOf) return schema.oneOf.some((item) => matchesSchema(value, item));
+  if (!schema.type) return true;
+  if (schema.type === "array") return Array.isArray(value) && value.every((item) => matchesSchema(item, schema.items || {}));
+  if (schema.type === "integer") return Number.isInteger(value);
+  if (schema.type === "number") return typeof value === "number" && Number.isFinite(value);
+  if (schema.type === "boolean") return typeof value === "boolean";
+  if (schema.type === "object") return value != null && typeof value === "object" && !Array.isArray(value);
+  return typeof value === schema.type;
+}
+
+function validateJsonSchema(input, schema = {}) {
+  const errors = [];
+  for (const key of schema.required || []) if (input?.[key] == null || input[key] === "") errors.push(`缺少 ${key}`);
+  for (const [key, value] of Object.entries(input || {})) {
+    const field = schema.properties?.[key];
+    if (field && !matchesSchema(value, field)) errors.push(`${key} 类型无效`);
+  }
+  return errors;
+}
 
 function withDeadline(promise, timeoutMs, signal) {
   if (signal?.aborted) return Promise.reject(Object.assign(new Error("运行已取消"), { code: "CANCELLED" }));
@@ -31,13 +52,20 @@ function createToolRegistry() {
       sensitivity: definition.sensitivity || "public",
       action: definition.action || null,
       timeoutMs: Math.max(50, Math.min(30000, Number(definition.timeoutMs) || 3000)),
-      validate: typeof definition.validate === "function" ? definition.validate : () => [],
+      transport: definition.transport || "local",
+      server: definition.server || null,
+      tool: definition.tool || name,
+      inputSchema: definition.inputSchema || { type: "object", properties: {}, additionalProperties: true },
+      validate: (input) => [
+        ...validateJsonSchema(input, definition.inputSchema),
+        ...(typeof definition.validate === "function" ? definition.validate(input) : []),
+      ],
       execute: definition.execute,
     }));
   }
 
   function describe() {
-    return [...tools.values()].map(({ name, description, sensitivity, action, timeoutMs }) => ({ name, description, sensitivity, action, timeoutMs }));
+    return [...tools.values()].map(({ name, description, sensitivity, action, timeoutMs, transport, server, tool, inputSchema }) => ({ name, description, sensitivity, action, timeoutMs, transport, server, tool, inputSchema }));
   }
 
   async function invoke(name, input, context = {}) {

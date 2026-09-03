@@ -138,11 +138,9 @@ test("local rig owns every runtime viseme and does not transform the full mouth 
   assert.match(rigSource, /maskSampleContext\.drawImage\(authoredMask/);
   assert.match(rigSource, /const mouthSourceLeft = width \* 0\.37/);
   assert.match(rigSource, /const mouthSourceWidth = width \* 0\.245/);
-  assert.match(rigSource, /const coreRadiusX = width \* \(viseme === "A" \? 0\.082 : 0\.074\)/);
-  assert.match(rigSource, /const coreAlpha = coreDistance <= 0\.8 \? 1 : clamp\(\(1 - coreDistance\) \/ 0\.2\)/);
-  assert.match(rigSource, /mouthPixels\.data\[index \+ 3\] = Math\.round\(maskPixels\.data\[index \+ 3\] \* coreAlpha\)/);
+  assert.match(rigSource, /mouthPixels\.data\[index \+ 3\] = maskPixels\.data\[index \+ 3\]/);
   assert.match(rigSource, /jawLayerPolicy = "continuous-jaw-geometry-preserved"/);
-  assert.match(rigSource, /mouthMaskPolicy = "mediapipe-lip-core-feather-color-matched"/);
+  assert.match(rigSource, /mouthMaskPolicy = "mediapipe-lip-union-color-matched"/);
   assert.match(rigSource, /const jawMaskCenterY = width \* 0\.563/);
   assert.doesNotMatch(rigSource, /drawTexturedTriangle|seamOverlapPx/);
   assert.doesNotMatch(rigSource, /leftCornerBuffer/);

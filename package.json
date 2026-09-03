@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安站点咨询顾问 V1.5.7",
-  "version": "1.5.7",
+  "productName": "小安站点咨询顾问 V1.5.17",
+  "version": "1.5.17",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -57,7 +57,7 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安站点咨询顾问 V1.5.7",
+    "productName": "小安站点咨询顾问 V1.5.17",
     "asar": true,
     "directories": {
       "output": "release"
@@ -77,19 +77,28 @@
         "to": "models/sherpa-onnx-vits-zh-ll"
       },
       {
-        "from": "skills/health-management-v1",
-        "to": "skills/health-management-v1"
+        "from": "skills/station-advisor-global-v2",
+        "to": "skills/station-advisor-global-v2"
       },
       {
-        "from": "skills/health-management-multidomain-v2",
-        "to": "skills/health-management-multidomain-v2"
+        "from": "skills/station-public-info-v1",
+        "to": "skills/station-public-info-v1"
       },
       {
-        "from": "skills/health-management-adaptive-dialogue-v3",
-        "to": "skills/health-management-adaptive-dialogue-v3"
+        "from": "skills/member-self-service-v1",
+        "to": "skills/member-self-service-v1"
+      },
+      {
+        "from": "skills/identity-and-permission-v1",
+        "to": "skills/identity-and-permission-v1"
+      },
+      {
+        "from": "skills/health-general-guidance-v1",
+        "to": "skills/health-general-guidance-v1"
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "portable"
       ],
@@ -97,6 +106,7 @@
       "signAndEditExecutable": false
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         {
           "target": "dmg",
