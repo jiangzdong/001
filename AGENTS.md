@@ -27,6 +27,7 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep resident identity, test session, runtime events and report correlated. Switching residents and cancelling runs must not leak prior events/data into the next session or production consultations. Distinguish same-window side-by-side observation, physical dual-display support and batch data scanning.
 - On 2026-09-04 the user selected option 1 for single-person observation: `docs/design/virtual-senior-live-observer/option-1.png`. Preserve its resident search/list, selected-resident details, scenario/start-stop controls on the left and actual live XiaoAn surface on the right. Use original product avatar assets, never the generated mock's avatar.
 - The user explicitly reaffirmed that resident health data and vital signs belong in the station MCP test scope. Audit real values, units, per-resident history, time filters, missing/stale/conflicting data and permissions separately from interface shape coverage; generic health Q&A is not evidence of personal health-query coverage. Do not enable production personal-data reads without the corresponding authorization path.
+- The lip-development task has ended. The user directed remaining development to continue in the current task; do not route testing/UI/health work back to the completed lip task unless the user explicitly requests that again.
 
 ## Mandatory Taste gate
 

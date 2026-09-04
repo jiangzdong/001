@@ -180,4 +180,4 @@
 - 审查判断：阻断 0、高 0、中 0（本机文本联调范围）；低 2 为真实外接触屏/观看距离及系统辅助技术未验证。设计质量内部评审 95/100：用户与场景 19/20、原创性 18/20、层级可读性 15/15、交互 15/15、系统一致性 10/10、动效反馈 9/10、无障碍/隐私 5/5、技术实现 4/5；这是对已观察流程的设计判断，不是像素相似度或用户最终批准。
 - 最终代码回归：**264/264 PASS**；Vite **4585 modules transformed**，Sites 后处理/4 项测试通过；完整社区 Fixture 160,000 次 Tool 调用与 192 状态通过，不冒充完整媒体/LLM/生产 MCP 验收。
 - 打包实测：独立 `release/live-observer-v1.5.22/mac-arm64/小安站点咨询顾问 V1.5.22.app` 未签名包，从正常设置入口启动（无 virtual-senior-test/open-virtual-senior 参数），选 SYN-00231 完成本人健康体征并展开报告；批量冒烟 64 人/1,024 调用完成；重启后通过真实“测试记录”按钮重新打开历史报告。证据 `QA-EXTERNAL/virtual-senior-community/live-observer-20260904/packaged-checks.json`；app.asar SHA256 `d0ede15af861b1a95fb420ee93e57ca2f504aa04ed72ab5a99d4b838717655b8`。
-- `PRE_DELIVERY_GATE`: PASS（macOS 单人可视化文本联调候选）。仍未验收：物理双屏/Windows、真实 ASR/TTS/口型、付费模型与生产个人健康合同；原 V1.5.21 包未覆盖，本增量尚未 Git 提交/推送。当前测试 App 使用隔离 QA 用户目录，不能冒充替换正式安装或保留生产密钥的升级验收。
+- `PRE_DELIVERY_GATE`: PASS（macOS 单人可视化文本联调候选）。仍未验收：物理双屏/Windows、真实 ASR/TTS/口型、付费模型与生产个人健康合同；原 V1.5.21 包未覆盖。功能提交 `dce88e8` 已推送至 `origin/feat/station-advisor-local-demo`，3 个设计参考 LFS 对象全部上传；安装包及 QA 数据未入 Git。当前测试 App 使用隔离 QA 用户目录，不能冒充替换正式安装或保留生产密钥的升级验收。
