@@ -5,6 +5,7 @@ import "./virtual-senior-live.css";
 
 const words = { "verified-self": "本人已授权", anonymous: "匿名", "auth-required": "待身份确认", expired: "授权已过期", "scope-limited": "权限受限", "cross-subject": "非本人", "no-record": "无健康记录", routine: "常规记录", "single-attention": "单项关注", "multi-attention": "多项关注", conflicting: "数据冲突", stale: "记录过期", insufficient: "记录不足", complete: "完整", partial: "部分缺失", slow: "慢速", medium: "适中", fast: "快速", completed: "已完成", auth_required: "需身份授权", denied: "访问被阻止", cancelled: "已停止", failed: "执行失败" };
 const label = (value) => words[value] || value;
+Object.assign(words, { journey_partial: "已结束，部分受阻或跳过", partial_failure: "已结束，存在失败", skipped: "未执行", running: "运行中" });
 const bridge = () => window.kioskBridge;
 
 export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) {
@@ -14,7 +15,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [scenarios, setScenarios] = useState([]);
-  const [scenarioId, setScenarioId] = useState("station-service");
+  const [scenarioId, setScenarioId] = useState("full-journey");
   const [messages, setMessages] = useState([]);
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -44,11 +45,12 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
       const current = active.current;
       if (!current || event.runId !== current.runId || event.sessionId !== current.sessionId || event.residentId !== current.binding.residentId || event.sequence <= lastSequence.current) return;
       lastSequence.current = event.sequence;
+      const turnLabel = event.payload.turn ? `第 ${event.payload.turn.index}/${event.payload.turn.total} 轮 · ${event.payload.turn.title}` : "合成数据联调";
       if (event.type === "question" || event.type === "answer") {
-        setMessages((items) => [...items, { id: `${event.runId}-${event.sequence}`, sequence: event.sequence, role: event.type === "question" ? "user" : "assistant", text: event.payload.text, title: "", meta: "合成数据联调", agents: [] }]);
-        setStatus(event.type === "question" ? "问题已送达，正在处理" : label(event.payload.outcome));
-      } else if (event.type === "tool-start") setStatus("正在查询合成业务数据");
-      else if (event.type === "stage") setStatus(event.payload.label);
+        setMessages((items) => [...items, { id: `${event.runId}-${event.sequence}`, sequence: event.sequence, role: event.type === "question" ? "user" : "assistant", text: event.payload.text, title: "", meta: turnLabel, agents: [] }]);
+        setStatus(`${turnLabel}：${event.type === "question" ? "正在处理" : label(event.payload.outcome)}`);
+      } else if (event.type === "tool-start") setStatus(`${turnLabel}：正在查询合成数据`);
+      else if (event.type === "stage") setStatus(`${turnLabel}：${event.payload.label}`);
       else if (["completed", "failed", "cancelled"].includes(event.type)) {
         setBusy(false); setReport(event.payload.report); active.current = null;
         setStatus(event.type === "completed" ? `本次结束 · ${label(event.payload.report.outcome)}` : label(event.type));
@@ -77,7 +79,11 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
     let second;
     const first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
       if (alive.current && active.current?.runId === current.runId && frame.current?.getBoundingClientRect().width > 0 && frame.current.querySelector(`[data-observed-message-id="${last.id}"]`)) {
-        void bridge().virtualSeniorLiveAck({ runId: current.runId, sequence: last.sequence }).catch(() => {});
+        const node = frame.current.querySelector(`[data-observed-message-id="${last.id}"]`);
+        const stream = frame.current.querySelector('.advisor-chat-stream');
+        const rect = node.getBoundingClientRect();
+        const visible = stream?.getBoundingClientRect();
+        if (visible && rect.bottom > visible.top && rect.top < visible.bottom) void bridge().virtualSeniorLiveAck({ runId: current.runId, sequence: last.sequence }).catch(() => {});
       }
     }); });
     return () => { cancelAnimationFrame(first); if (second) cancelAnimationFrame(second); };
@@ -150,7 +156,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
         </div>
         <div className="live-pagination"><span>{loading ? "正在加载" : `匹配 ${page?.total || 0} 位`}</span><div><button aria-label="返回第一页" disabled={busy || loading || !cursor} onClick={() => setCursor(null)}><ArrowLeft /></button><button aria-label="下一页居民" disabled={busy || loading || !page?.nextCursor} onClick={() => setCursor(page.nextCursor)}><ArrowRight /></button></div></div>
         <section className="live-selected" aria-label="选中画像摘要"><div><strong>{detailLoading ? "正在读取画像…" : resident ? `当前画像 ${resident.displayCode}` : "尚未选择画像"}</strong><button disabled={!resident || busy} onClick={() => setDialogContent({ kind: "health" })}>查看资料</button></div>{resident ? <dl><div><dt>年龄</dt><dd>{resident.profile.age} 岁</dd></div><div><dt>说话速度</dt><dd>{label(resident.profile.speechPace)}</dd></div><div><dt>健康资料</dt><dd>{label(resident.health.state)}</dd></div></dl> : <p>选择具体居民后，测试将绑定此人的资料与权限。</p>}</section>
-        <label className="live-scenario">测试场景<select aria-label="测试场景" value={scenarioId} disabled={busy} onChange={(e) => setScenarioId(e.target.value)}>{scenarios.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
+        <label className="live-scenario">测试场景<select aria-label="测试场景" value={scenarioId} disabled={busy} onChange={(e) => setScenarioId(e.target.value)}>{scenarios.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select>{scenarioId === "full-journey" && <small>计划检查 5 个 MCP、16 个工具；权限不足会如实阻止。</small>}</label>
         {error && <div className="live-error" role="alert"><span>{error}</span><button disabled={busy} onClick={() => { setError(""); setRetry((value) => value + 1); }}>重试加载</button></div>}
         <footer className="live-actions"><button className="live-primary" disabled={(!resident || !ProductSurface || !scenarios.length) && !busy || busy && !active.current} onClick={busy ? stop : start}>{busy ? <Stop weight="fill" /> : <Play weight="fill" />}{busy ? "停止测试" : report ? "再次测试" : "开始测试"}</button><div><span role="status">{status}</span><button onClick={showReports} disabled={busy}>测试记录</button></div></footer>
       </section>
@@ -162,7 +168,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
     </div>
     <dialog ref={dialog} className="live-detail" onClose={() => setDialogContent(null)}>
       <header><h2>{dialogContent?.kind === "health" ? `${resident?.displayCode} 的合成资料` : "单人测试记录"}</h2><button aria-label="关闭资料" onClick={() => dialog.current.close()}><X /></button></header>
-      {dialogContent?.kind === "health" ? <><p>仅测试数据，不是本人健康档案。指标枚举为测试专用，生产合同尚未确认。</p><dl className="live-detail-profile"><div><dt>居民 ID</dt><dd>{resident?.residentId}</dd></div><div><dt>授权状态</dt><dd>{label(resident?.profile.permissionState)}</dd></div><div><dt>数据质量</dt><dd>{label(resident?.profile.dataQuality)}</dd></div></dl><h3>健康体征</h3>{vitals.length ? <table><thead><tr><th>指标</th><th>记录值</th><th>记录日期</th></tr></thead><tbody>{vitals.map((item) => <tr key={item.evidenceId}><td>{item.displayName}</td><td>{item.value} {item.unit}</td><td>{item.observedAt.slice(0, 10)}</td></tr>)}</tbody></table> : <p>没有可用体征记录，不用默认数值填充。</p>}<p>健康测评：{selected?.health?.evaluations?.results?.length || 0} 份。未作临床判断。</p></> : dialogContent?.kind === "reports" ? <><p>最近 50 次单人运行独立保存，不与批量通过率混算。</p>{dialogContent.items.length ? dialogContent.items.map((item) => <button className="live-report-row" key={item.runId} onClick={() => setDialogContent({ kind: "report", item })}><strong>{item.binding.displayCode}</strong><span>{label(item.outcome || item.status)}</span><small>{new Date(item.startedAt).toLocaleString("zh-CN")}</small></button>) : <p>还没有测试记录。</p>}</> : dialogContent?.item ? <><p>{dialogContent.item.binding.displayCode} · {label(dialogContent.item.outcome || dialogContent.item.status)} · {dialogContent.item.durationMs} ms</p><p>右侧已呈现 {dialogContent.item.renderedSequences.length} 条消息；语音、口型、生产服务未运行。</p>{dialogContent.item.persistenceError && <p role="alert">{dialogContent.item.persistenceError}</p>}<details><summary>查看事件和结果明细</summary><pre>{JSON.stringify(dialogContent.item, null, 2)}</pre></details></> : null}
+      {dialogContent?.kind === "health" ? <><p>仅测试数据，不是本人健康档案。指标枚举为测试专用，生产合同尚未确认。</p><dl className="live-detail-profile"><div><dt>居民 ID</dt><dd>{resident?.residentId}</dd></div><div><dt>授权状态</dt><dd>{label(resident?.profile.permissionState)}</dd></div><div><dt>数据质量</dt><dd>{label(resident?.profile.dataQuality)}</dd></div></dl><h3>健康体征</h3>{vitals.length ? <table><thead><tr><th>指标</th><th>记录值</th><th>记录日期</th></tr></thead><tbody>{vitals.map((item) => <tr key={item.evidenceId}><td>{item.displayName}</td><td>{item.value} {item.unit}</td><td>{item.observedAt.slice(0, 10)}</td></tr>)}</tbody></table> : <p>没有可用体征记录，不用默认数值填充。</p>}<p>健康测评：{selected?.health?.evaluations?.results?.length || 0} 份。未作临床判断。</p></> : dialogContent?.kind === "reports" ? <><p>最近 50 次单人运行独立保存，不与批量通过率混算。</p>{dialogContent.items.length ? dialogContent.items.map((item) => <button className="live-report-row" key={item.runId} onClick={() => setDialogContent({ kind: "report", item })}><strong>{item.binding.displayCode}</strong><span>{label(item.outcome || item.status)}</span><small>{new Date(item.startedAt).toLocaleString("zh-CN")}</small></button>) : <p>还没有测试记录。</p>}</> : dialogContent?.item ? <><p>{dialogContent.item.binding.displayCode} · {label(dialogContent.item.outcome || dialogContent.item.status)} · {dialogContent.item.durationMs} ms</p><p>右侧已呈现 {dialogContent.item.renderedSequences.length} 条消息；语音、口型、生产服务未运行。</p>{dialogContent.item.coverage && <><h3>本次覆盖</h3><p>已呈现 {dialogContent.item.coverage.renderedTurns}/{dialogContent.item.coverage.totalTurns} 轮；实际调用 {dialogContent.item.coverage.calledMcp}/{dialogContent.item.coverage.plannedMcp} 个 MCP、{dialogContent.item.coverage.calledTools}/{dialogContent.item.coverage.plannedTools} 个工具，成功 {dialogContent.item.coverage.successfulTools} 个工具。</p><p>成功 {dialogContent.item.coverage.completedTurns} 轮，权限阻止 {dialogContent.item.coverage.blockedTurns} 轮，失败 {dialogContent.item.coverage.failedTurns} 轮，未执行 {dialogContent.item.coverage.skippedTurns} 轮。观察停留时间不计入每轮查询耗时。</p><table aria-label="逐轮测试结果"><thead><tr><th>轮次 / 场景</th><th>结果</th><th>查询耗时</th></tr></thead><tbody>{dialogContent.item.turns?.map((item) => <tr key={item.id}><td>{item.index}. {item.title}</td><td>{label(item.status)}</td><td>{item.queryMs == null ? "未查询" : `${item.queryMs} ms`}</td></tr>)}</tbody></table><details><summary>查看工具覆盖</summary><table aria-label="工具覆盖明细"><thead><tr><th>工具</th><th>实际调用 / 成功</th></tr></thead><tbody>{dialogContent.item.coverage.tools.map((item) => <tr key={item.tool}><td>{item.title}</td><td>{item.calls} / {item.successes}</td></tr>)}</tbody></table></details></>}{dialogContent.item.persistenceError && <p role="alert">{dialogContent.item.persistenceError}</p>}<details><summary>查看事件和结果明细</summary><pre>{JSON.stringify(dialogContent.item, null, 2)}</pre></details></> : null}
     </dialog>
   </section>, document.body);
 }

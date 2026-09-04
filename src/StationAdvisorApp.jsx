@@ -409,7 +409,7 @@ export function ConversationScreen({ response, messages, onQuestion, composerPro
         : "正在识别，请直接说话…"
   );
   useEffect(() => {
-    streamRef.current?.scrollTo?.({ top: streamRef.current.scrollHeight, behavior: "smooth" });
+    streamRef.current?.scrollTo?.({ top: streamRef.current.scrollHeight, behavior: observationStatus ? "instant" : "smooth" });
   }, [messages, liveRecognitionText, recognizing]);
   return (
     <main className="advisor-conversation">

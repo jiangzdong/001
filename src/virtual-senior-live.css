@@ -26,7 +26,7 @@
 .live-product-shell.advisor-shell { width:min(100cqw,62.5cqh); height:min(160cqw,100cqh); min-height:0; margin:0; border-radius:0; box-shadow:none; mask-image:none; -webkit-mask-image:none; }
 .live-product-shell .advisor-observation-status { position:absolute; bottom:4cqw; left:4cqw; right:4cqw; padding:3cqw; border-radius:2cqw; background:#fffffff0; color:#36556d; font-size:max(12px,2.8cqw); text-align:center; }
 .live-product-shell .advisor-message { padding:12px; }
-.live-product-shell .advisor-message p,.live-product-shell .advisor-empty-answer p { font-size:max(14px,1.85cqw); line-height:1.65; }
+.live-product-shell .advisor-message p,.live-product-shell .advisor-empty-answer p { font-size:max(14px,1.85cqw); line-height:1.65; overflow-wrap:anywhere; }
 .live-product-shell .advisor-message > span { font-size:max(12px,1.4cqw); }
 .live-product-shell .advisor-message > span svg { width:14px; height:14px; }
 .live-product-shell .advisor-message h1:empty { display:none; }

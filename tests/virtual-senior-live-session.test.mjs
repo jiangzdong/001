@@ -13,7 +13,7 @@ const resident = Array.from({ length: 64 }, (_, index) => dataset.residentAt(ind
 function setup(t, overrides = {}) {
   const events = []; let done;
   const finished = new Promise((resolve) => { done = resolve; });
-  const service = createVirtualSeniorLiveSession({ dataset, ackTimeoutMs: 100, ...overrides, onEvent: (owner, event) => {
+  const service = createVirtualSeniorLiveSession({ dataset, ackTimeoutMs: 100, turnDelayMs: 0, ...overrides, onEvent: (owner, event) => {
     events.push(event);
     if (["question", "answer"].includes(event.type) && overrides.autoAck !== false) queueMicrotask(() => service.acknowledge(owner, event));
     if (["completed", "failed", "cancelled"].includes(event.type)) done(event.payload.report);

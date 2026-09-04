@@ -1,5 +1,30 @@
 # DESIGN_EXECUTION_RECORD
 
+## 13. 2026-09-04 单人多轮全场景补齐（当前增量）
+
+- 用户要求：点击每个长者，对话应为多轮，包含所有场景的 MCP 和 Tools。
+- 范围判断：补齐既有“选人→开始→右侧问答→结果”流程的测试数据和运行状态，不新增页面、导航、交互流程、视觉语言或组件类型。沿用方案 1、原生下拉、状态文字、消息流和报告弹窗/表格；属于同组件数据及缺陷修复的窄范围例外，不重做三方向。
+- 当前视觉源：`docs/design/virtual-senior-live-observer/option-1.png` 及 V1.5.22 `QA-EXTERNAL/virtual-senior-community/live-observer-20260904/health-final-1487x1058.png`。布局、头像、字号、颜色、触控区均保留。
+- Design Read：面向产品经理的冷白蓝绿单人观察工作台，保持左控右看，增强连续对话的可理解性。`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=2`、`VISUAL_DENSITY=6`。
+- 已完整读取全局规范、Product Design index 与 design-taste-frontend。index 路由为既有代码普通实现；Taste 仅应用保护既有系统、对比、文案和状态检查，产品流程采用全局内置 Taste 降级量表，不套营销页面规则。
+- Taste：保留选稿布局和真实人物；增强轮次、上下文依赖和报告覆盖；删除“一轮等于全量”的误导；重做仅限单次执行器，不重做视觉。
+- 验收：默认完整旅程覆盖现有 5 MCP /16 Tool 计划；同一居民/会话连续追问，真实 HTTP 调用、每轮呈现确认、取消隔离、逐轮报告；实际成功、权限阻断、依赖跳过、失败必须分别统计。合成写入需要脚本明确确认，仅限 Fixture，不修改生产权限策略。
+- 状态：准备、逐轮运行、等待观察、无数据、权限不足、上游失败、停止、完成/部分受阻及重试。已有按钮 ≥52px、焦点/Escape、减少动态效果和 1487×1058/750×1200 响应式规则不变。用原生报告表格逐轮展示，不增加装饰边线。
+- `PRE_CODE_GATE`: PASS
+- `PRE_DELIVERY_GATE`: PASS
+- 核心流程操作证据：`QA-EXTERNAL/virtual-senior-community/multi-turn-20260904/packaged-full-report.json`，正常 App 设置入口，SYN-00231 实跑 22 轮/44 消息，5/5 MCP、16/16 Tool 成功；`ui-checks.json` 保存检查结果。
+- 异常、取消与恢复证据：同目录 `packaged-anonymous-report.json` 全 22 轮呈现、12 轮权限阻止、4 个公共 Tool 成功，不泄露个人数据；源码真实 GUI 停止后仅 2 条消息；自动测试含取消等待、迟到结果、无记录、上游失败及依赖跳过。`restart-check.json` 确认包重启仍可读取同一份 22 轮报告。
+- 目标视口截图：同目录 `packaged-complete-1487x1058.png`、`packaged-running-1487x1058.png`、`packaged-report-1487x1058.png`、`packaged-anonymous-750x1200.png`。这些是包内 Electron 渲染视口检查；本机原生窗口高度受屏幕限制约 1013px，不将视口模拟冒充 Windows 或实体双屏。
+- 可访问性与焦点检查：可见控件不足 52px 为 0，Tab 焦点描边 3px，Escape 关闭资料后焦点返回；背景 root inert；减少动态效果媒体分支已实际启用。读屏器和实体触控未单独验收。
+- 控制台 / 溢出 / 横向滚动：本次包内 pageerror=0，宽窄视口横向溢出=0、消息内部横向溢出=0；修复活动缺地点 undefined 和长记录 ID 换行。对话保留可滚动历史、自动跟随新消息。
+- 自动测试与构建：完整 Node 273/273 PASS（同目录 node-tests.log）；Vite 4585 modules 与 Sites 构建 PASS；生成器 v1.4.1 社区 10,000 人×16 Tool=160,000 调用及 192 协议状态 PASS（full-sweep-v141/tool-sweep-report.json）。协议扫描不冒充 10,000 人完整可视化旅程通过。
+- Taste：保留 / 增强 / 删除 / 重做：保留方案 1 原布局/人物/表面色；增强多轮上下文、可读轮次和报告；删除假全覆盖及缺字段字符串；重做 QA 单轮执行器，不重做视觉。
+- Audit：阻断 / 高 / 中 / 低 / 通过项：当前增量无阻断/高问题；中项为真实语音、生产合同和目标设备独立待验；低项为预设脚本文案仍可后续丰富。按内置量表评审 95/100（19/19/14/15/10/9/4/5），主观评分不等于像素还原率。与 V1.5.22 同尺寸截图及方案 1 对照：header=84px，左右面板 x=20/750.5、同宽716.5，原人物/消息列未变；补充说明占 26px，使下拉与摘要上移，属于已记录同组件状态。没有精确还原百分比声明。
+- 回退点：`1511a49` / V1.5.22 独立 App 保留，不覆盖；新增包在 `release/multi-turn-v1.5.23/mac-arm64/小安站点咨询顾问 V1.5.23.app`。
+- 提交 / 产物：V1.5.23 独立 macOS arm64 未签名 App；app.asar SHA256 `4edb774971d4be4f577aeb5c427092752a5181464bbf6e23cc13f9bab6c18bdb`；源码提交遵循本轮门禁，提交标识以 Git 与项目状态文件为准。
+- 未验收范围：真实生产 MCP、自由对话模型理解、ASR/TTS/口型、Windows 2400×3840、实体双屏、读屏器不包含在本轮 PASS。
+- 最终结论：本机合成数据单人多轮文本联调通过，可直接从 App GUI 试用；其它链路保持独立门禁。
+
 > 本记录是设计流程证据，不替代项目进度唯一事实源 `PROJECT_STATUS.md`。
 
 ## 1. 范围判定

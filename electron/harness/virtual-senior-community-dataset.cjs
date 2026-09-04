@@ -8,7 +8,7 @@ const { MCP_TOOL_CATALOG } = require("./mcp-tools.cjs");
 const { healthFields, METRICS, DAY } = require("./virtual-senior-health-fixtures.cjs");
 
 const DATASET_VERSION = "community-v1.0.0";
-const GENERATOR_VERSION = "community-generator-v1.4.0";
+const GENERATOR_VERSION = "community-generator-v1.4.1";
 const DATA_CLASSIFICATION = "synthetic-test-only";
 const PROFILES = Object.freeze({ smoke: 64, regression: 1000, "community-full": 10000, stress: 50000 });
 const CONTRACT_STATES = Object.freeze(["success", "empty", "missing", "stale", "invalid-input", "unknown-id", "cross-tenant", "auth-required", "denied", "timeout", "service-error", "contract-corrupt"]);
@@ -159,7 +159,7 @@ function entityRecord(dataset, entity, index) {
   if (entity === "pointLedger") { const balance = memberBalance(dataset, resident); const firstCredit = balance + (resident.memberState === "non-member" ? 0 : 490); const points = residentOrdinal === 1 ? firstCredit : resident.memberState === "non-member" ? 0 : 10; const direction = residentOrdinal === 1 ? "credit" : "debit"; const balanceAfter = residentOrdinal === 1 ? firstCredit : firstCredit - ((residentOrdinal - 1) * points); return { ...base, seniorId: resident.seniorId, ledgerId: `point-${resident.seniorId}-${residentOrdinal}`, direction, points: String(points), balanceAfter: String(balanceAfter), occurredAt: at.occurredAt, referenceType: residentOrdinal === 1 ? "opening-credit" : "synthetic-service" }; }
   if (entity === "rechargeRecords") return { ...base, recordId: `recharge-${resident.seniorId}-${sequence}`, seniorId: resident.seniorId, rechargeId: `recharge-${resident.seniorId}-${sequence}`, amount: at.amount, currency: "CNY", status: index % 13 === 0 ? "reversed" : "settled", paidAt: at.occurredAt, channel: ["counter", "card", "online"][index % 3] };
   if (entity === "consumptionRecords") return { ...base, recordId: `consumption-${resident.seniorId}-${sequence}`, seniorId: resident.seniorId, consumptionId: `consumption-${resident.seniorId}-${sequence}`, amount: at.amount, currency: "CNY", status: index % 19 === 0 ? "refunded" : index % 23 === 0 ? "voided" : "settled", consumedAt: at.occurredAt, category: ["meal", "activity", "assessment"][index % 3], summary: `合成${["助餐", "活动", "测评"][index % 3]}记录` };
-  if (entity === "stationServices") return { ...base, seniorId: null, serviceId: `service-${sequence}`, name: ["助餐", "健康测评", "康复指导", "活动预约"][index % 4], category: ["meal", "assessment", "rehabilitation", "activity"][index % 4], enabled: index % 11 !== 0, bookingRequired: index % 2 === 0, location: index % 7 === 0 ? null : `社区${(index % 4) + 1}区`, schedule: "09:00-17:00", updatedAt: at.occurredAt };
+  if (entity === "stationServices") return { ...base, seniorId: null, serviceId: `service-${sequence}`, name: ["助餐", "健康测评", "康复指导", "活动预约"][index % 4], category: ["meal", "assessment", "rehabilitation", "activity"][index % 4], enabled: index % 11 !== 0, bookingRequired: index % 2 === 0, location: index % 7 === 0 ? null : `社区${(index % 4) + 1}区`, schedule: index % 4 === 0 ? "11:30 至 13:00" : "09:00-17:00", updatedAt: at.occurredAt };
   if (entity === "stationActivities") return { ...base, seniorId: null, activityId: `activity-${String(sequence).padStart(4, "0")}`, serviceId: `service-${(index % 48) + 1}`, title: ["健康讲堂", "八段锦", "营养咨询"][index % 3], category: ["lecture", "exercise", "nutrition"][index % 3], status: index % 41 === 0 ? "cancelled" : index % 37 === 0 ? "full" : index % 29 === 0 ? "ended" : "open", startsAt: at.occurredAt, endsAt: at.occurredAt.replace("09:00:00", "10:00:00"), timezone: "Asia/Shanghai", capacity: 30, enrolled: index % 31 };
   if (entity === "knowledgeArticles") return { ...base, seniorId: null, knowledgeId: `knowledge-${String(sequence).padStart(4, "0")}`, title: `合成站点知识 ${sequence}`, category: ["service", "health", "activity"][index % 3], summary: "仅用于合成社区回归的结构化知识条目", publishedAt: at.occurredAt, expiresAt: index % 17 === 0 ? "2025-01-01T00:00:00+08:00" : "2027-01-01T00:00:00+08:00", updatedAt: at.occurredAt };
   throw new Error(`unknown community entity: ${entity}`);
@@ -238,7 +238,13 @@ function publicResponse(dataset, key, args, state) {
   if (state === "missing") return { serviceId: "meal_service", name: "助餐服务", missingFields: ["location"], ...base };
   if (state === "stale") return { stale: true, updatedAt: "2024-01-01T00:00:00.000Z", ...base };
   if (state === "unknown-id") return error("RESOURCE_NOT_FOUND", "站点资源不存在");
-  if (key.endsWith("get_station_service_detail")) return { ...entityRecord(dataset, "stationServices", 0), serviceId: String(args.serviceId || "meal_service"), schedule: "11:30 至 13:00", speechSchedule: "十一点半到十三点", eligibility: { resident: true, memberRequired: false }, ...base };
+  if (key.endsWith("get_station_service_detail")) {
+    const id = String(args.serviceId || "meal_service");
+    const index = id === "meal_service" ? 0 : /^service-\d+$/.test(id) ? Number(id.slice(8)) - 1 : -1;
+    if (index < 0 || index >= 48) return error("RESOURCE_NOT_FOUND", "站点服务不存在");
+    const service = entityRecord(dataset, "stationServices", index);
+    return { ...service, serviceId: id, speechSchedule: service.schedule, eligibility: { resident: true, memberRequired: false }, ...base };
+  }
   if (key.endsWith("list_station_services_brief")) { const paged = pageRange(48, args.cursor, args.limit, (index) => entityRecord(dataset, "stationServices", index)); const items = paged.items?.filter((item) => args.enabledOnly === false || item.enabled); return paged.error ? paged : { ...paged, items, ...base }; }
   if (key.endsWith("search_station_knowledge")) { const paged = pageRange(1200, args.cursor, args.limit, (index) => entityRecord(dataset, "knowledgeArticles", index)); const items = paged.items?.filter((item) => item.expiresAt > "2026-09-03T00:00:00+08:00" && (!args.query || item.title.includes(String(args.query).slice(0, 2)) || true)); return paged.error ? paged : { ...paged, items, query: String(args.query || ""), ...base }; }
   if (key.endsWith("list_station_activities")) { const paged = pageRange(1500, args.cursor, args.limit, (index) => entityRecord(dataset, "stationActivities", index)); return paged.error ? paged : { ...paged, timezone: "Asia/Shanghai", dateRange: { from: args.dateFrom || null, to: args.dateTo || null }, ...base }; }
