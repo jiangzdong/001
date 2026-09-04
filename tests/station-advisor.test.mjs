@@ -25,7 +25,7 @@ test("station advisor is the active local portrait demo", async () => {
     readFile(mainPath, "utf8"),
   ]);
 
-  assert.match(main, /import \{ StationAdvisorApp \}/);
+  assert.match(main, /import \{ StationAdvisorApp(?:, ConversationScreen)? \}/);
   assert.match(main, /<StationAdvisorApp \/>/);
   assert.match(styles, /width: min\(100vw, 62\.5dvh\)/);
   assert.match(styles, /height: min\(100dvh, 160vw\)/);
@@ -43,7 +43,7 @@ test("station advisor is the active local portrait demo", async () => {
 });
 
 test("conversation keeps the full digital-human interaction skeleton instead of a compact avatar", async () => {
-  const advisor = await readFile(advisorPath, "utf8");
+  const [advisor, styles] = await Promise.all([readFile(advisorPath, "utf8"), readFile(stylesPath, "utf8")]);
   const conversation = advisor.match(
     /function ConversationScreen\([\s\S]*?\n\}\n\nfunction ConsentScreen/,
   )?.[0] || "";
@@ -58,6 +58,7 @@ test("conversation keeps the full digital-human interaction skeleton instead of 
   assert.match(conversation, /advisor-message--recognizing/);
   assert.doesNotMatch(conversation, /<AdvisorRecognition/);
   assert.match(conversation, /<AdvisorComposer \{\.\.\.composerProps\}/);
+  assert.match(styles, /\.advisor-chat-stream \{[\s\S]*?top: 4\.5cqw;/);
 });
 
 test("every secondary flow reuses the same full digital-human stage", async () => {
@@ -253,6 +254,26 @@ test("current station advisor entry provides desktop and local-web DeepSeek conn
   assert.match(vite, /server\.middlewares\.use\("\/api\/deepseek\/clear"/);
   assert.match(vite, /仅允许本机网页测试/);
   assert.match(vite, /\^sk-\[A-Za-z0-9_-\]\{16,\}\$/);
+});
+
+test("terminal settings keeps a saved local key masked and exposes one consistent admin entry", async () => {
+  const [advisor, styles] = await Promise.all([
+    readFile(advisorPath, "utf8"),
+    readFile(stylesPath, "utf8"),
+  ]);
+
+  assert.match(advisor, /function TerminalSettingsDialog/);
+  assert.match(advisor, /本机密钥已安全保存，无需再次输入/);
+  assert.match(advisor, /configured && !editingKey/);
+  assert.match(advisor, /更换密钥/);
+  assert.match(advisor, /清除本机密钥/);
+  assert.match(advisor, /站点账号/);
+  assert.match(advisor, /账号登录与登出服务待接入/);
+  assert.match(advisor, /advisor-terminal-settings-trigger/);
+  assert.match(advisor, /onSettings=\{openTerminalManagement\}/);
+  assert.match(styles, /\.advisor-terminal-settings-trigger \{/);
+  assert.match(styles, /\.advisor-terminal-setting\.is-unavailable/);
+  assert.doesNotMatch(advisor, /站点账号已登录|站点账号已退出/);
 });
 
 test("desktop terminal management configures all five MCP services without exposing bearer tokens", async () => {

@@ -80,6 +80,19 @@ contextBridge.exposeInMainWorld("kioskBridge", {
   openVirtualSeniorControl: () => ipcRenderer.invoke("virtual-senior:open-control"),
   closeVirtualSeniorControl: () => ipcRenderer.invoke("virtual-senior:close-control"),
   virtualSeniorStatus: () => ipcRenderer.invoke("virtual-senior:status"),
+  virtualSeniorResidentSearch: (payload) => ipcRenderer.invoke("virtual-senior:resident-search", payload),
+  virtualSeniorResidentDetail: (payload) => ipcRenderer.invoke("virtual-senior:resident-detail", payload),
+  virtualSeniorLiveCatalog: () => ipcRenderer.invoke("virtual-senior:live-catalog"),
+  virtualSeniorLivePrepare: (payload) => ipcRenderer.invoke("virtual-senior:live-prepare", payload),
+  virtualSeniorLiveBegin: (runId) => ipcRenderer.invoke("virtual-senior:live-begin", runId),
+  virtualSeniorLiveAck: (payload) => ipcRenderer.invoke("virtual-senior:live-ack", payload),
+  virtualSeniorLiveCancel: (runId) => ipcRenderer.invoke("virtual-senior:live-cancel", runId),
+  virtualSeniorLiveReports: () => ipcRenderer.invoke("virtual-senior:live-reports"),
+  onVirtualSeniorLiveEvent: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("virtual-senior:live-event", listener);
+    return () => ipcRenderer.removeListener("virtual-senior:live-event", listener);
+  },
   virtualSeniorCatalog: () => ipcRenderer.invoke("virtual-senior:catalog"),
   virtualSeniorCommunityStatus: () => ipcRenderer.invoke("virtual-senior:community-status"),
   startVirtualSeniorCommunityJob: (payload) => ipcRenderer.invoke("virtual-senior:community-start", payload),

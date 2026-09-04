@@ -5,9 +5,10 @@
 // millions of records in the renderer or production bundle.
 const crypto = require("node:crypto");
 const { MCP_TOOL_CATALOG } = require("./mcp-tools.cjs");
+const { healthFields, METRICS, DAY } = require("./virtual-senior-health-fixtures.cjs");
 
 const DATASET_VERSION = "community-v1.0.0";
-const GENERATOR_VERSION = "community-generator-v1.3.0";
+const GENERATOR_VERSION = "community-generator-v1.4.0";
 const DATA_CLASSIFICATION = "synthetic-test-only";
 const PROFILES = Object.freeze({ smoke: 64, regression: 1000, "community-full": 10000, stress: 50000 });
 const CONTRACT_STATES = Object.freeze(["success", "empty", "missing", "stale", "invalid-input", "unknown-id", "cross-tenant", "auth-required", "denied", "timeout", "service-error", "contract-corrupt"]);
@@ -150,12 +151,10 @@ function entityRecord(dataset, entity, index) {
   const residentOrdinal = Math.floor(index / dataset.residents) + 1;
   const base = { id: `${entity}-${String(sequence).padStart(9, "0")}`, synthetic: true, dataClassification: DATA_CLASSIFICATION, tenantId: 10001, orgId: 10001, sequence };
   const at = recordAt(dataset, resident, entity, index);
+  const health = healthFields(dataset, resident, entity, residentOrdinal);
+  if (health) return { ...base, seniorId: resident.seniorId, ...health };
   if (entity === "residents") return { ...resident, id: `resident-${resident.seniorId}`, createdAt: "2026-01-01T00:00:00+08:00" };
   if (entity === "identityEvents") return { ...base, seniorId: resident.seniorId, consentId: `consent-${resident.seniorId}-${residentOrdinal}`, captureToken: `capture-${resident.seniorId}-${residentOrdinal}`, eventType: ["capture", "authorize", "expire", "revoke"][residentOrdinal % 4], consentState: resident.consentState, occurredAt: at.occurredAt };
-  if (entity === "healthLabels") return { ...base, seniorId: resident.seniorId, labelId: `label-${resident.seniorId}-${residentOrdinal}`, labelType: ["blood-pressure", "mobility", "sleep", "nutrition"][index % 4], level: resident.healthState.includes("attention") ? "attention" : "routine", observedAt: at.occurredAt, sourceSystem: "synthetic-health" };
-  if (entity === "indicatorEvidence") return { ...base, seniorId: resident.seniorId, evidenceId: `evidence-${resident.seniorId}-${residentOrdinal}`, metric: ["systolic_bp", "heart_rate", "blood_glucose", "steps"][index % 4], value: String(60 + (index % 80)), unit: index % 4 === 0 ? "mmHg" : index % 4 === 1 ? "bpm" : index % 4 === 2 ? "mmol/L" : "steps", source: "synthetic-device", observedAt: at.occurredAt, timeWindow: ["1d", "7d", "1m", "3m", "6m"][index % 5], quality: resident.dataQuality };
-  if (entity === "healthEvaluations") return { ...base, seniorId: resident.seniorId, evaluationId: `eval-${resident.seniorId}-${residentOrdinal}`, evaluationType: ["functional", "nutrition", "fall-risk", "cognition"][index % 4], status: index % 17 === 0 ? "incomplete" : "completed", score: 60 + (index % 41), evaluatedAt: at.occurredAt };
-  if (entity === "riskAssessments") return { ...base, seniorId: resident.seniorId, assessmentId: `risk-${resident.seniorId}-${residentOrdinal}`, level: resident.healthState.includes("attention") ? "attention" : "routine", evidenceIds: [`evidence-${resident.seniorId}-${((residentOrdinal - 1) % 120) + 1}`], idempotencyKey: `seed-${dataset.seed}-${resident.seniorId}-${residentOrdinal}`, createdAt: at.occurredAt };
   if (entity === "memberAccounts") return { ...base, seniorId: resident.seniorId, accountId: `member-${resident.seniorId}`, memberState: resident.memberState, level: resident.memberState === "non-member" ? null : ["普通", "银龄", "金龄"][index % 3], pointsBalance: memberBalance(dataset, resident), authorizationId: resident.authorizationId, observedAt: "2026-09-03T00:00:00+08:00" };
   if (entity === "pointLedger") { const balance = memberBalance(dataset, resident); const firstCredit = balance + (resident.memberState === "non-member" ? 0 : 490); const points = residentOrdinal === 1 ? firstCredit : resident.memberState === "non-member" ? 0 : 10; const direction = residentOrdinal === 1 ? "credit" : "debit"; const balanceAfter = residentOrdinal === 1 ? firstCredit : firstCredit - ((residentOrdinal - 1) * points); return { ...base, seniorId: resident.seniorId, ledgerId: `point-${resident.seniorId}-${residentOrdinal}`, direction, points: String(points), balanceAfter: String(balanceAfter), occurredAt: at.occurredAt, referenceType: residentOrdinal === 1 ? "opening-credit" : "synthetic-service" }; }
   if (entity === "rechargeRecords") return { ...base, recordId: `recharge-${resident.seniorId}-${sequence}`, seniorId: resident.seniorId, rechargeId: `recharge-${resident.seniorId}-${sequence}`, amount: at.amount, currency: "CNY", status: index % 13 === 0 ? "reversed" : "settled", paidAt: at.occurredAt, channel: ["counter", "card", "online"][index % 3] };
@@ -164,6 +163,9 @@ function entityRecord(dataset, entity, index) {
   if (entity === "stationActivities") return { ...base, seniorId: null, activityId: `activity-${String(sequence).padStart(4, "0")}`, serviceId: `service-${(index % 48) + 1}`, title: ["健康讲堂", "八段锦", "营养咨询"][index % 3], category: ["lecture", "exercise", "nutrition"][index % 3], status: index % 41 === 0 ? "cancelled" : index % 37 === 0 ? "full" : index % 29 === 0 ? "ended" : "open", startsAt: at.occurredAt, endsAt: at.occurredAt.replace("09:00:00", "10:00:00"), timezone: "Asia/Shanghai", capacity: 30, enrolled: index % 31 };
   if (entity === "knowledgeArticles") return { ...base, seniorId: null, knowledgeId: `knowledge-${String(sequence).padStart(4, "0")}`, title: `合成站点知识 ${sequence}`, category: ["service", "health", "activity"][index % 3], summary: "仅用于合成社区回归的结构化知识条目", publishedAt: at.occurredAt, expiresAt: index % 17 === 0 ? "2025-01-01T00:00:00+08:00" : "2027-01-01T00:00:00+08:00", updatedAt: at.occurredAt };
   throw new Error(`unknown community entity: ${entity}`);
+}
+function healthRecords(dataset, resident, entity, count) {
+  return Array.from({ length: count }, (_, index) => entityRecord(dataset, entity, residentGlobalIndex(dataset, resident, index + 1))).filter((item) => item.available);
 }
 function toolResponse(dataset, key, args = {}, idempotency = new Map()) {
   const state = String(args.__communityState || "success");
@@ -183,12 +185,28 @@ function toolResponse(dataset, key, args = {}, idempotency = new Map()) {
   if (state === "missing") return { seniorId: resident.seniorId, missingFields: ["optionalNarrative"], ...base };
   if (state === "stale") return { seniorId: resident.seniorId, stale: true, generatedAt: "2024-01-01T00:00:00.000Z", ...base };
   switch (key) {
-    case "health_risk_assessment_mcp.get_risk_assessment_context": return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, ageBand: resident.ageBand, accessibility: { hearing: resident.hearing, vision: resident.vision } }, indicatorSummary: { evidenceCount: 120, timeWindows: ["1d", "7d", "1m", "3m", "6m"], abnormalCount: resident.healthState.includes("attention") ? 2 : 0 }, riskHistory: [{ assessmentId: `risk-${resident.seniorId}-001`, level: resident.healthState.includes("attention") ? "attention" : "routine", assessedAt: "2026-08-03T09:00:00+08:00" }], dataQuality: { state: resident.dataQuality, generatedAt: "2026-09-03T00:00:00+08:00" }, ...base };
-    case "health_risk_assessment_mcp.get_latest_health_labels": return { seniorId: resident.seniorId, medicalHistoryLabels: [{ code: "HTN_OBSERVED", displayName: "血压观察", sourceId: `label-${resident.seniorId}-1` }], inquirySummary: { status: "synthetic-complete", updatedAt: "2026-09-03T00:00:00+08:00" }, vitalSigns: [{ metric: "systolic_bp", value: "126", unit: "mmHg", observedAt: "2026-09-03T08:00:00+08:00" }], comprehensiveLabels: [{ level: resident.healthState.includes("attention") ? "attention" : "routine", evidenceId: `evidence-${resident.seniorId}-1` }], generatedAt: "2026-09-03T00:00:00+08:00", ...base };
+    case "health_risk_assessment_mcp.get_risk_assessment_context": {
+      const evidence = healthRecords(dataset, resident, "indicatorEvidence", 120);
+      return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, ageBand: resident.ageBand, accessibility: { hearing: resident.hearing, vision: resident.vision } }, indicatorSummary: { evidenceCount: evidence.length, timeWindows: ["1d", "7d", "30d", "90d", "180d"], fixtureState: resident.healthState }, riskHistory: healthRecords(dataset, resident, "riskAssessments", 3), dataQuality: { state: resident.dataQuality, healthState: resident.healthState, generatedAt: dataset.generatedAt }, ...base };
+    }
+    case "health_risk_assessment_mcp.get_latest_health_labels": {
+      const labels = healthRecords(dataset, resident, "healthLabels", 8);
+      const evidence = healthRecords(dataset, resident, "indicatorEvidence", 120);
+      const vitalSigns = METRICS.map(([metric]) => evidence.find((item) => item.metric === metric)).filter(Boolean);
+      return { seniorId: resident.seniorId, medicalHistoryLabels: labels.map((item) => ({ ...item, code: item.labelType, displayName: item.labelType, sourceId: item.labelId })), inquirySummary: { status: resident.healthState === "no-record" ? "no-record" : "synthetic-only", updatedAt: dataset.generatedAt }, vitalSigns, comprehensiveLabels: vitalSigns.map((item) => ({ level: resident.healthState.includes("attention") ? "attention" : "routine", evidenceId: item.evidenceId })), generatedAt: dataset.generatedAt, ...base };
+    }
     case "health_risk_assessment_mcp.get_indicator_evidence": {
-      const window = args.timeType || 7;
-      const paged = pageRange(120, args.cursor, args.limit, (index) => ({ ...recordAt(dataset, resident, "indicator", index), metric: index % 2 ? "heart-rate" : "blood-pressure", value: index % 2 ? 72 : "126/78" }));
-      return paged.error ? paged : { seniorId: resident.seniorId, timeWindow: `${window}d`, evidence: paged.items.map((item, index) => ({ ...item, evidenceId: `evidence-${resident.seniorId}-${index + 1}`, source: "synthetic-device", unit: item.metric === "heart-rate" ? "bpm" : "mmHg", observedAt: item.occurredAt, quality: resident.dataQuality })), nextCursor: paged.nextCursor, pageSize: paged.pageSize, total: paged.total, ...base };
+      const window = args.timeType ?? 7;
+      if (!Number.isInteger(window) || window < 1 || window > 365) return error("INVALID_TIME_WINDOW", "合成时间窗必须为 1–365 天");
+      const types = args.signsTypeList || [];
+      if (!Array.isArray(types) || types.some((id) => !Number.isInteger(id) || id < 1 || id > METRICS.length)) return error("INVALID_FIXTURE_METRIC", "合成指标枚举不支持该值");
+      const anchor = Date.parse(dataset.generatedAt);
+      const records = healthRecords(dataset, resident, "indicatorEvidence", 120).filter((item) => {
+        const age = anchor - Date.parse(item.observedAt);
+        return age >= 0 && age < window * DAY && (!types.length || types.includes(item.signsType));
+      });
+      const paged = pageRange(records.length, args.cursor, args.limit, (index) => records[index]);
+      return paged.error ? paged : { seniorId: resident.seniorId, timeWindow: `${window}d`, evidence: paged.items, nextCursor: paged.nextCursor, pageSize: paged.pageSize, total: paged.total, asOf: dataset.generatedAt, enumContract: "fixture-only-v1; production-enum-unverified", ...base };
     }
     case "health_risk_assessment_mcp.save_risk_assessment_result": {
       const idempotencyKey = String(args.idempotencyKey || "");
@@ -201,7 +219,10 @@ function toolResponse(dataset, key, args = {}, idempotency = new Map()) {
       return { seniorId: resident.seniorId, saved: true, replayed: Boolean(prior), idempotencyKey, resultId, assessment: { level: args.riskAssessmentDraft?.level || "routine", evidenceIds: args.riskAssessmentDraft?.evidence || [], savedAt: "2026-09-03T00:00:00+08:00" }, ...base };
     }
     case "health_evaluation_service_mcp_cms.get_senior_profile": return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, displayCode: resident.displayCode, ageBand: resident.ageBand, communication: { speechPace: resident.speechPace }, accessibility: { hearing: resident.hearing, vision: resident.vision, digitalLiteracy: resident.digitalLiteracy }, dataQuality: resident.dataQuality }, profileVersion: resident.profileVersion, ...base };
-    case "health_evaluation_service_mcp_cms.get_health_evaluation_results": return { seniorId: resident.seniorId, results: Array.from({ length: args.latestOnly ? 1 : 4 }, (_, index) => ({ evaluationId: `eval-${resident.seniorId}-${index + 1}`, type: ["functional", "nutrition", "fall-risk", "cognition"][index], status: index === 3 && resident.dataQuality === "partial" ? "incomplete" : "completed", score: 72 + index, evaluatedAt: recordAt(dataset, resident, "assessment", index).occurredAt })), latestOnly: Boolean(args.latestOnly), ...base };
+    case "health_evaluation_service_mcp_cms.get_health_evaluation_results": {
+      const results = healthRecords(dataset, resident, "healthEvaluations", 4).map((item) => ({ ...item, type: item.evaluationType }));
+      return { seniorId: resident.seniorId, results: args.latestOnly ? results.slice(0, 1) : results, latestOnly: Boolean(args.latestOnly), ...base };
+    }
     case "identity_permission_mcp.match_face_to_senior": return { captureToken: String(args.captureToken || "synthetic-capture"), candidates: resident.consentState === "valid" ? [{ seniorId: resident.seniorId, confidence: "0.910", consentId: `consent-${resident.seniorId}-1` }] : [], outcome: resident.consentState === "valid" ? "MATCHED" : resident.consentState === "expired" ? "CONSENT_EXPIRED" : "NOT_MATCHED", rawImageStored: false, ...base };
     case "identity_permission_mcp.check_data_permission": { const decision = resident.permissionState === "verified-self" ? "ALLOW" : resident.permissionState === "auth-required" || resident.permissionState === "anonymous" ? "AUTH_REQUIRED" : "DENY"; return { seniorId: resident.seniorId, action: args.action || "member:read:self", decision, reasonCode: decision === "ALLOW" ? "VERIFIED_SELF" : decision === "AUTH_REQUIRED" ? "AUTH_MISSING" : "SYNTHETIC_POLICY_DENY", authorizationId: decision === "ALLOW" ? resident.authorizationId : null, expiresAt: decision === "ALLOW" ? "2026-09-03T00:05:00+08:00" : null, ...base }; }
     case "member_asset_mcp.get_member_points": return { seniorId: resident.seniorId, accountId: `member-${resident.seniorId}`, points: memberBalance(dataset, resident), redemptionRules: resident.memberState === "non-member" ? null : { minimumPoints: 100, currency: "CNY" }, observedAt: "2026-09-03T00:00:00+08:00", ...(args.includeLedger ? { ledgerPreview: [entityRecord(dataset, "pointLedger", residentGlobalIndex(dataset, resident, 1))] } : {}), ...base };

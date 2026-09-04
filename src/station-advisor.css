@@ -985,6 +985,25 @@ button { font: inherit; }
 .advisor-model-setup-success svg { width: 5cqw; height: 5cqw; color: #20947d; }
 .advisor-model-setup-success strong { color: var(--advisor-ink); font-size: 2.15cqw; }
 .advisor-model-setup-success span { color: var(--advisor-muted); font-size: 1.45cqw; font-weight: 750; }
+.advisor-model-configured { display: flex; align-items: center; gap: 1.2cqw; min-height: 10.5cqw; margin: 0 0 1.8cqw; padding: 1.5cqw 1.7cqw; border-radius: 2.2cqw; background: #e7f5f1; color: #176b5f; }
+.advisor-model-configured > svg { flex: 0 0 auto; width: 4cqw; height: 4cqw; }
+.advisor-model-configured span { display: grid; gap: .25cqw; text-align: left; }
+.advisor-model-configured strong { color: #194c50; font-size: 1.8cqw; }
+.advisor-model-configured small { color: #4d6f72; font-size: 1.25cqw; line-height: 1.4; }
+.advisor-terminal-settings-dialog { text-align: center; }
+.advisor-terminal-settings-list { display: grid; gap: 1cqw; text-align: left; }
+.advisor-terminal-setting { width: 100%; min-height: 9.2cqw; display: grid; grid-template-columns: 4.3cqw 1fr 2.8cqw; align-items: center; gap: 1.3cqw; padding: 1.25cqw 1.5cqw; border: 0; border-radius: 2.2cqw; background: #edf5f9; color: #2c718c; cursor: pointer; text-align: left; }
+.advisor-terminal-setting > svg:first-child { width: 3.5cqw; height: 3.5cqw; color: #2785a6; }
+.advisor-terminal-setting > svg:last-child { width: 2.5cqw; height: 2.5cqw; color: #5e8192; }
+.advisor-terminal-setting span { display: grid; gap: .28cqw; min-width: 0; }
+.advisor-terminal-setting strong { color: #1d4860; font-size: 1.65cqw; }
+.advisor-terminal-setting small { color: #607a8b; font-size: 1.2cqw; line-height: 1.35; }
+.advisor-terminal-setting:not(.is-unavailable):active { transform: scale(.985); background: #e0f0f6; }
+.advisor-terminal-setting.is-unavailable { color: #69808d; background: #f0f5f7; cursor: default; }
+.advisor-terminal-setting.is-unavailable > svg:first-child { color: #778f9a; }
+.advisor-terminal-settings-trigger { position: absolute; z-index: 30; top: 2.2cqw; right: 2.4cqw; width: 7cqw; height: 7cqw; display: grid; place-items: center; border: 0; border-radius: 2.2cqw; background: rgba(255,255,255,.78); color: #2383a5; box-shadow: 0 .5cqw 1.8cqw rgba(53,91,128,.09); cursor: pointer; }
+.advisor-terminal-settings-trigger svg { width: 3.1cqw; height: 3.1cqw; }
+.advisor-terminal-settings-trigger:active { transform: scale(.96); background: #e2f1f7; }
 .advisor-mcp-setup-dialog { max-height: calc(100% - 6cqw); overflow-y: auto; }
 .advisor-mcp-setup-dialog > small { margin-bottom: 1.6cqw; }
 .advisor-mcp-fields { display: grid; gap: 1.15cqw; }
@@ -1056,7 +1075,10 @@ button { font: inherit; }
 }
 .advisor-chat-stream {
   position: absolute;
-  top: 12cqw;
+  /* Conversation has no visual heading. Keep only a small safe inset so the
+     chat begins at the top of the left work area instead of reserving a blank
+     banner above the first user message. */
+  top: 4.5cqw;
   left: 5.2cqw;
   right: auto;
   width: 55.8cqw;

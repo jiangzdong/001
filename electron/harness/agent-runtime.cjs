@@ -18,6 +18,21 @@ function defaultPlan(text) {
   return { intent: "station.knowledge.search", tool: "station_content_mcp.search_station_knowledge", arguments: { orgId: 1, query: text, limit: 3 } };
 }
 
+// The model proposes a plan, but it cannot downgrade an explicit personal
+// member request into a general-health conversation. The policy gate below
+// still prevents any personal MCP read until identity has been verified.
+function enforceExplicitMemberIntent(text, plan = {}) {
+  const value = String(text || "");
+  if (!/积分/.test(value)) return plan;
+  return {
+    ...plan,
+    intent: "member.points.self",
+    tool: "member_asset_mcp.get_member_points",
+    arguments: { ...(plan.arguments || {}), seniorId: 1, orgId: 1 },
+    policyInput: { ...(plan.policyInput || {}), owner: /他人|别人|老伴|家人/.test(value) ? "other" : "self" },
+  };
+}
+
 function publicAnswer(plan, data) {
   if (plan.intent === "health.general" && !plan.tool) return "我先了解一下：这种不适从什么时候开始，现在严重吗？如果突然很剧烈或伴有意识、说话、肢体异常，请立即就医。";
   if (plan.tool === "health_evaluation_service_mcp_cms.get_station_service_detail") return `${data.name}时间是${data.speechSchedule || data.schedule}，地点在${data.location}。`;
@@ -64,7 +79,7 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
       const allowed = new Set(scenario.allowedTools);
       const visibleTools = registry.describe().filter((tool) => allowed.has(tool.name));
       trace.push({ type: "scenario.selected", at: now(), scenario: scenario.id, toolCount: visibleTools.length });
-      plan = await planner(text, { registry: visibleTools, scenario, scenarioSkill: scenario.content, signal: controller.signal, memory: memoryStore?.snapshot(sessionId) || { sessionId, turns: [] } });
+      plan = enforceExplicitMemberIntent(text, await planner(text, { registry: visibleTools, scenario, scenarioSkill: scenario.content, signal: controller.signal, memory: memoryStore?.snapshot(sessionId) || { sessionId, turns: [] } }));
       if (plan.tool && registry.get(plan.tool) && !allowed.has(plan.tool)) throw Object.assign(new Error("场景不允许调用该工具"), { code: "SCENARIO_TOOL_NOT_ALLOWED" });
       trace.push({ type: "plan.completed", at: now(), intent: plan.intent, tool: plan.tool });
       if (!plan.tool) {
@@ -87,9 +102,9 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
         const permissionToolName = "identity_permission_mcp.check_data_permission";
         const permissionStarted = now();
         const permissionInvocation = await registry.invoke(permissionToolName, {
-          orgId: toolArguments.orgId ?? input.tenantId ?? 1,
+          orgId: Number(toolArguments.orgId ?? input.tenantId ?? 1),
           operatorId: String(input.actor?.operatorId || input.terminalId || "kiosk"),
-          seniorId: toolArguments.seniorId ?? 1,
+          seniorId: Number(toolArguments.seniorId ?? 1),
           action: tool.action,
           authToken: input.actor?.subjectToken || null,
         }, { runId, sessionId, turnId, signal: controller.signal, actor: input.actor || {} });
@@ -146,4 +161,4 @@ function createAgentRuntime({ registry, planner = defaultPlan, composer = public
   };
 }
 
-module.exports = { createAgentRuntime, defaultPlan };
+module.exports = { createAgentRuntime, defaultPlan, enforceExplicitMemberIntent };

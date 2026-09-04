@@ -10,6 +10,7 @@ import {
   DotsThree,
   FaceMask,
   Flask,
+  GearSix,
   HouseLine,
   Info,
   Keyboard,
@@ -220,7 +221,7 @@ function HeaderButton({ icon: Icon, label, active = false, onClick }) {
   );
 }
 
-function AdvisorHeader({ screen, largeText, muted, onHome, onLargeText, onMute, onExit }) {
+function AdvisorHeader({ screen, largeText, muted, onHome, onLargeText, onMute, onSettings, onExit }) {
   return (
     <header className="advisor-header">
       <button className="advisor-brand" type="button" onClick={onHome} aria-label="返回站点咨询顾问首页">
@@ -231,6 +232,7 @@ function AdvisorHeader({ screen, largeText, muted, onHome, onLargeText, onMute, 
         {screen !== "home" && <HeaderButton icon={HouseLine} label="首页" onClick={onHome} />}
         <HeaderButton icon={muted ? SpeakerSlash : SpeakerHigh} label={muted ? "静音" : "音量"} active={muted} onClick={onMute} />
         <HeaderButton icon={TextAa} label="大字" active={largeText} onClick={onLargeText} />
+        <HeaderButton icon={DotsThree} label="设置" onClick={onSettings} />
         <HeaderButton icon={SignOut} label="退出" onClick={onExit} />
       </div>
     </header>
@@ -396,7 +398,7 @@ function HomeScreen({ onQuestion, composerProps, avatarProps, modelConfigured, o
   );
 }
 
-function ConversationScreen({ response, messages, onQuestion, composerProps, avatarProps, onConnectModel }) {
+export function ConversationScreen({ response, messages, onQuestion, composerProps, avatarProps, onConnectModel, observationStatus }) {
   const streamRef = useRef(null);
   const recognizing = ["listening", "recognizing"].includes(composerProps.voiceState);
   const liveRecognitionText = composerProps.draft || (
@@ -415,12 +417,12 @@ function ConversationScreen({ response, messages, onQuestion, composerProps, ava
       <section className="advisor-conversation-panel">
         <div ref={streamRef} className="advisor-chat-stream" aria-live="polite">
           {messages.length ? messages.map((message, index) => message.role === "user" ? (
-              <article className="advisor-message advisor-message--user" key={message.id}>
+              <article className="advisor-message advisor-message--user" key={message.id} data-observed-message-id={message.id}>
                 <span>您</span>
                 <p>{message.text}</p>
               </article>
             ) : (
-              <article className="advisor-message advisor-message--assistant" key={message.id}>
+              <article className="advisor-message advisor-message--assistant" key={message.id} data-observed-message-id={message.id}>
                 <span><Waveform weight="bold" />小安 · {message.meta}</span>
                 <h1>{message.title}</h1>
                 <p>{message.text}</p>
@@ -434,7 +436,7 @@ function ConversationScreen({ response, messages, onQuestion, composerProps, ava
             )) : (
             <article className="advisor-empty-answer">
             <Microphone weight="duotone" />
-            <p>点击下方按钮开始说话，或选择一个常见问题。</p>
+            <p>{observationStatus ? "请先选择画像并开始测试，问答过程将在这里呈现。" : "点击下方按钮开始说话，或选择一个常见问题。"}</p>
           </article>
         )}
           {recognizing && (
@@ -444,7 +446,7 @@ function ConversationScreen({ response, messages, onQuestion, composerProps, ava
             </article>
           )}
         </div>
-        <AdvisorComposer {...composerProps} />
+        {observationStatus ? <div className="advisor-observation-status" role="status">{observationStatus}</div> : <AdvisorComposer {...composerProps} />}
       </section>
     </main>
   );
@@ -572,15 +574,16 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
   const keyRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [apiKey, setApiKey] = useState("");
+  const [editingKey, setEditingKey] = useState(!configured);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [connectionComplete, setConnectionComplete] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    keyRef.current?.focus();
+    if (editingKey) keyRef.current?.focus();
     return () => window.clearTimeout(closeTimerRef.current);
-  }, []);
+  }, [editingKey]);
 
   const save = async () => {
     const key = apiKey.trim();
@@ -677,18 +680,52 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
           </div>
         ) : (
           <>
-            <label className="advisor-model-key-label" htmlFor="advisor-deepseek-key">DeepSeek API 密钥</label>
-            <div className="advisor-composer__input-surface advisor-model-key-field">
-              <input id="advisor-deepseek-key" ref={keyRef} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" spellCheck="false" disabled={saving} />
-            </div>
-            <button data-testid="advisor-deepseek-save" className="advisor-exit-submit" type="button" onClick={save} disabled={saving}>{saving ? "正在保存…" : "保存并连接"}</button>
-            {configured && <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={saving}>{confirmClear ? "确认清除" : "清除本机密钥"}</button>}
+            {configured && !editingKey ? <>
+              <div className="advisor-model-configured" role="status"><CheckCircle weight="fill" /><span><strong>已配置</strong><small>本机密钥已安全保存，无需再次输入</small></span></div>
+              <button className="advisor-exit-submit" type="button" onClick={() => { setEditingKey(true); setMessage(""); }}>更换密钥</button>
+              <button className="advisor-auth-secondary" type="button" onClick={clear} disabled={saving}>{confirmClear ? "确认清除" : "清除本机密钥"}</button>
+            </> : <>
+              <label className="advisor-model-key-label" htmlFor="advisor-deepseek-key">DeepSeek API 密钥</label>
+              <div className="advisor-composer__input-surface advisor-model-key-field">
+                <input id="advisor-deepseek-key" ref={keyRef} type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" spellCheck="false" disabled={saving} />
+              </div>
+              <button data-testid="advisor-deepseek-save" className="advisor-exit-submit" type="button" onClick={save} disabled={saving}>{saving ? "正在保存…" : configured ? "保存新密钥" : "保存并连接"}</button>
+              {configured && <button className="advisor-auth-secondary" type="button" onClick={() => { setEditingKey(false); setApiKey(""); setMessage(""); }} disabled={saving}>取消更换</button>}
+            </>}
             <button data-testid="advisor-open-mcp-config" className="advisor-auth-secondary" type="button" onClick={onOpenMcp} disabled={saving}>配置业务数据服务</button>
             <button data-testid="advisor-open-virtual-senior" className="advisor-auth-secondary advisor-virtual-senior-entry" type="button" onClick={openVirtualSenior} disabled={saving}><Flask weight="bold" />{virtualSeniorAvailable ? "打开虚拟长者测试" : "启动虚拟长者测试"}</button>
             <small className="advisor-virtual-senior-help">使用独立合成数据，不影响正式咨询；点击后直接进入测试中心。</small>
             {message && <div className={`advisor-pin-message ${message.startsWith("本机密钥已") ? "is-success" : ""}`} role="status" aria-live="polite">{message}</div>}
           </>
         )}
+      </section>
+    </div>
+  );
+}
+
+function TerminalSettingsDialog({ modelConfigured, onClose, onManageModel, onManageMcp, onManageVirtualSenior }) {
+  return (
+    <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
+      <section className="advisor-exit-dialog advisor-terminal-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-terminal-settings-title">
+        <button className="advisor-dialog-close" type="button" onClick={onClose} aria-label="关闭"><X weight="bold" /></button>
+        <span className="advisor-exit-dialog__icon"><GearSix weight="duotone" /></span>
+        <p>终端设置</p>
+        <h2 id="advisor-terminal-settings-title">管理本站点终端</h2>
+        <small>仅供管理员配置。密钥保存在本机，使用者不会看到或再次填写已保存的内容。</small>
+        <div className="advisor-terminal-settings-list">
+          <button className="advisor-terminal-setting" type="button" onClick={onManageModel}>
+            <LockKey weight="duotone" /><span><strong>智能对话</strong><small>{modelConfigured ? "DeepSeek 已配置" : "尚未配置 DeepSeek"}</small></span><ArrowRight weight="bold" />
+          </button>
+          <button className="advisor-terminal-setting" type="button" onClick={onManageMcp}>
+            <Buildings weight="duotone" /><span><strong>业务数据服务</strong><small>配置并检测 5 项 MCP 服务</small></span><ArrowRight weight="bold" />
+          </button>
+          <button className="advisor-terminal-setting" type="button" onClick={onManageVirtualSenior}>
+            <Flask weight="duotone" /><span><strong>虚拟长者测试</strong><small>只使用隔离合成数据</small></span><ArrowRight weight="bold" />
+          </button>
+          <div className="advisor-terminal-setting is-unavailable" aria-label="站点账号服务尚未接入">
+            <PersonSimpleCircle weight="duotone" /><span><strong>站点账号</strong><small>账号登录与登出服务待接入</small></span><Info weight="bold" />
+          </div>
+        </div>
       </section>
     </div>
   );
@@ -794,6 +831,7 @@ export function StationAdvisorApp() {
   const [largeText, setLargeText] = useState(false);
   const [muted, setMuted] = useState(false);
   const [showExit, setShowExit] = useState(false);
+  const [showTerminalSettings, setShowTerminalSettings] = useState(false);
   const [showModelSetup, setShowModelSetup] = useState(false);
   const [showMcpSetup, setShowMcpSetup] = useState(false);
   const [showVirtualSenior, setShowVirtualSenior] = useState(() => Boolean(window.kioskBridge?.virtualSeniorAutoOpen));
@@ -1246,12 +1284,12 @@ export function StationAdvisorApp() {
 
   useEffect(() => {
     const conversationalScreen = screen === "home" || screen === "conversation";
-    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showModelSetup || showMcpSetup || showVirtualSenior || keyboardMode || speaking || speechPreparing) return undefined;
+    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showTerminalSettings || showModelSetup || showMcpSetup || showVirtualSenior || keyboardMode || speaking || speechPreparing) return undefined;
     const retrying = Boolean(voiceMessage);
     const delayMs = retrying ? advisorInteractionRetryDelayMs : screen === "home" ? 650 : 1050;
     autoListenTimerRef.current = window.setTimeout(() => startListening({ automatic: true }), delayMs);
     return () => window.clearTimeout(autoListenTimerRef.current);
-  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, showVirtualSenior, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
+  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, showTerminalSettings, showVirtualSenior, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
 
   useEffect(() => () => {
     operationIdRef.current += 1;
@@ -1318,9 +1356,11 @@ export function StationAdvisorApp() {
     setAutoVoiceEnabled(false);
     setKeyboardMode(false);
     setShowMcpSetup(false);
-    setShowModelSetup(true);
+    setShowModelSetup(false);
+    setShowTerminalSettings(true);
   };
   const closeTerminalManagement = () => {
+    setShowTerminalSettings(false);
     setShowModelSetup(false);
     setShowMcpSetup(false);
     if (modelConfigured !== false) {
@@ -1414,7 +1454,8 @@ export function StationAdvisorApp() {
         <img src="./assets/xiaoa-fullbody-extension-v1.0.0.png" alt="" />
       </div>
       <div className={`advisor-shell advisor-screen-${screen} ${largeText ? "is-large-text" : ""} ${showVirtualSenior ? "has-virtual-senior-console" : ""} ${keyboardMode && (screen === "home" || screen === "conversation") ? "has-soft-keyboard" : ""}`}>
-        {screen !== "home" && screen !== "conversation" && <AdvisorHeader screen={screen} largeText={largeText} muted={muted} onHome={goHome} onLargeText={() => setLargeText((value) => !value)} onMute={() => setMuted((value) => !value)} onExit={openExit} />}
+        {screen !== "home" && screen !== "conversation" && <AdvisorHeader screen={screen} largeText={largeText} muted={muted} onHome={goHome} onLargeText={() => setLargeText((value) => !value)} onMute={() => setMuted((value) => !value)} onSettings={openTerminalManagement} onExit={openExit} />}
+        {(screen === "home" || screen === "conversation") && <button className="advisor-terminal-settings-trigger" type="button" onClick={openTerminalManagement} aria-label="打开终端设置"><DotsThree weight="bold" /></button>}
         {screen === "home" && <HomeScreen onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} modelConfigured={modelConfigured} onConnectModel={openTerminalManagement} />}
         {screen === "conversation" && <ConversationScreen response={response} messages={messages} onQuestion={handleQuestion} composerProps={composerProps} avatarProps={avatarProps} onConnectModel={openTerminalManagement} />}
         {screen === "consent" && <ConsentScreen avatarProps={avatarProps} onCancel={() => { setAutoVoiceEnabled(true); setScreen("conversation"); }} onContinue={() => setScreen("scan")} />}
@@ -1431,9 +1472,10 @@ export function StationAdvisorApp() {
           onSubmit={(value) => submitText(value || draftRef.current)}
         />
         {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
+        {showTerminalSettings && <TerminalSettingsDialog modelConfigured={modelConfigured === true} onClose={closeTerminalManagement} onManageModel={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} onManageMcp={() => { setShowTerminalSettings(false); setShowMcpSetup(true); }} onManageVirtualSenior={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} />}
         {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} onOpenVirtualSenior={() => { setShowModelSetup(false); setShowVirtualSenior(true); }} onVirtualSeniorActivated={(result) => { setVirtualSeniorAvailable(true); setVirtualSeniorDualScreen(result?.surface === "window"); }} virtualSeniorAvailable={virtualSeniorAvailable} />}
-        {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowModelSetup(true); }} />}
-        <VirtualSeniorTestConsole open={showVirtualSenior} onClose={() => { setShowVirtualSenior(false); closeTerminalManagement(); }} />
+        {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowTerminalSettings(true); }} />}
+        <VirtualSeniorTestConsole ProductSurface={ConversationScreen} open={showVirtualSenior} onClose={() => { setShowVirtualSenior(false); closeTerminalManagement(); }} />
       </div>
     </div>
   );

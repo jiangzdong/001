@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import harnessModule from "../electron/harness/index.cjs";
+import agentRuntimeModule from "../electron/harness/agent-runtime.cjs";
 
 const { createXiaoanHarness, createToolRegistry, createAgentRuntime, createSessionMemoryStore } = harnessModule;
+const { enforceExplicitMemberIntent } = agentRuntimeModule;
 
 test("Harness exposes registered tools without executable functions", () => {
   const runtime = createXiaoanHarness();
@@ -58,6 +60,21 @@ test("ordinary symptoms use the health guidance scenario without MCP or authoriz
   assert.equal(result.intent, "health.general");
   assert.deepEqual(result.toolTrace, []);
   assert.match(result.answer.speechText, /什么时候|严重/);
+});
+
+test("explicit points request cannot be downgraded into a health conversation by the model", async () => {
+  const corrected = enforceExplicitMemberIntent("帮我查询会员积分", { intent: "health.general", tool: null, arguments: {}, policyInput: {} });
+  assert.deepEqual(corrected, {
+    intent: "member.points.self",
+    tool: "member_asset_mcp.get_member_points",
+    arguments: { seniorId: 1, orgId: 1 },
+    policyInput: { owner: "self" },
+  });
+  const runtime = createXiaoanHarness({ planner: async () => ({ intent: "health.general", tool: null, arguments: {}, policyInput: {} }) });
+  const result = await runtime.run({ text: "帮我查询会员积分", actor: { authLevel: "none", scopes: [] } });
+  assert.equal(result.intent, "member.points.self");
+  assert.equal(result.status, "auth_required");
+  assert.deepEqual(result.toolTrace, []);
 });
 
 test("scenario boundary rejects a registered tool from another scenario", async () => {

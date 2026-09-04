@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { VirtualSeniorLiveObserver } from "./VirtualSeniorLiveObserver.jsx";
 import {
   ArrowCounterClockwise,
   ChartBar,
@@ -258,7 +259,8 @@ function AnalysisPanel({ batch, community, onShowFailed }) {
   );
 }
 
-export function VirtualSeniorTestConsole({ open, onClose, standalone = false }) {
+export function VirtualSeniorTestConsole({ open, onClose, standalone = false, ProductSurface }) {
+  const [mode, setMode] = useState("single");
   const [catalog, setCatalog] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [personaFilter, setPersonaFilter] = useState("all");
@@ -311,6 +313,7 @@ export function VirtualSeniorTestConsole({ open, onClose, standalone = false }) 
   }), [catalog, failedOnly, personaFilter, reportsByScenario]);
 
   if (!open) return null;
+  if (mode === "single") return <VirtualSeniorLiveObserver ProductSurface={ProductSurface} onClose={onClose} onBatch={() => setMode("batch")} />;
 
   const run = async (scenarioIds, resume = false) => {
     if ((!scenarioIds.length && !resume) || running) return;
@@ -402,6 +405,7 @@ export function VirtualSeniorTestConsole({ open, onClose, standalone = false }) 
         </div>}
 
         <nav className="virtual-senior-tabs" aria-label="测试工作区">
+          <button type="button" disabled={running || community?.job?.status === "running"} onClick={() => setMode("single")}><UserFocus weight="bold" />单人观察</button>
           <button type="button" className={tab === "scenarios" ? "is-active" : ""} onClick={() => setTab("scenarios")}><ListChecks weight="bold" />场景</button>
           <button type="button" className={tab === "analysis" ? "is-active" : ""} onClick={() => setTab("analysis")}><ChartBar weight="bold" />统计分析{analysis?.failed ? <b>{analysis.failed}</b> : null}</button>
         </nav>

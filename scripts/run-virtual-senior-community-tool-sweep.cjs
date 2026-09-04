@@ -4,7 +4,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { MCP_TOOL_CATALOG } = require("../electron/harness/mcp-tools.cjs");
-const { CONTRACT_STATES, SUCCESS_CONTRACTS, createCommunityDataset, selectResidents, validateSuccessContract } = require("../electron/harness/virtual-senior-community-dataset.cjs");
+const { CONTRACT_STATES, SUCCESS_CONTRACTS, createCommunityDataset, selectResidents, validateSuccessContract, entityRecord, residentGlobalIndex } = require("../electron/harness/virtual-senior-community-dataset.cjs");
 const { createVirtualSeniorFixtureMcp } = require("../electron/harness/virtual-senior-fixture-mcp.cjs");
 function arg(name, fallback) { const item = process.argv.find((value) => value.startsWith(`--${name}=`)); return item ? item.slice(name.length + 3) : fallback; }
 function cohortArg() { try { return JSON.parse(arg("cohort", "{}")); } catch { throw new Error("invalid --cohort JSON"); } }
@@ -88,7 +88,11 @@ async function main() {
     for (const item of Object.values(residentSweep.byTool)) { item.p50Ms = percentile(item.samples, .5); item.p95Ms = percentile(item.samples, .95); item.maxMs = Number(Math.max(...item.samples).toFixed(3)); delete item.samples; }
     residentSweep.elapsedMs = Number(elapsedMs.toFixed(3)); residentSweep.throughputPerSecond = Number((residentSweep.executed / Math.max(elapsedMs / 1000, .001)).toFixed(2));
     residentSweep.valid = residentSweep.executed === residentSweep.expected && residentSweep.failures.length === 0;
-    const timeWindows = [1, 7, 30, 90, 180].map((timeType) => { const data = dataset.toolResponse("health_risk_assessment_mcp.get_indicator_evidence", { ...argumentsFor("health_risk_assessment_mcp.get_indicator_evidence", resident.seniorId, "success"), timeType }); return { timeType, timeWindow: data.timeWindow, valid: Array.isArray(data.evidence) && data.evidence.length > 0 }; });
+    const timeWindows = [1, 7, 30, 90, 180].map((timeType) => {
+      const data = dataset.toolResponse("health_risk_assessment_mcp.get_indicator_evidence", { ...argumentsFor("health_risk_assessment_mcp.get_indicator_evidence", resident.seniorId, "success"), timeType });
+      const expected = Array.from({ length: 120 }, (_, index) => entityRecord(dataset, "indicatorEvidence", residentGlobalIndex(dataset, resident, index + 1))).filter((item) => item.available && [1, 2].includes(item.signsType) && Date.parse(dataset.generatedAt) - Date.parse(item.observedAt) < timeType * 86400000);
+      return { timeType, timeWindow: data.timeWindow, expected: expected.length, actual: data.total, valid: Array.isArray(data.evidence) && data.total === expected.length && JSON.stringify(data.evidence) === JSON.stringify(expected.slice(0, 20)) };
+    });
     const dimensions = {
       resident: { profileResidents: dataset.residents, selectedResidents: selectedResidents.length },
       entity: dataset.entityCounts,

@@ -276,7 +276,7 @@ test("portrait talk mode keeps one shared stage boundary and independent top con
   assert.match(styles, /\.topbar-home \{[\s\S]*?min-height: 7\.4cqw/);
 });
 
-test("V1.5.20 keeps one avatar camera baseline, exposes the version, and packages only active station skills", async () => {
+test("V1.5.22 keeps one avatar camera baseline, exposes the version, and packages only active station skills", async () => {
   const [appSource, advisorSource, styles, packageSource, indexSource, viteSource] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/StationAdvisorApp.jsx", import.meta.url), "utf8"),
@@ -286,15 +286,15 @@ test("V1.5.20 keeps one avatar camera baseline, exposes the version, and package
     readFile(new URL("../vite.config.mjs", import.meta.url), "utf8"),
   ]);
 
-  assert.match(packageSource, /"version": "1\.5\.20"/);
-  assert.match(packageSource, /"productName": "小安站点咨询顾问 V1\.5\.20"/);
+  assert.match(packageSource, /"version": "1\.5\.22"/);
+  assert.match(packageSource, /"productName": "小安站点咨询顾问 V1\.5\.22"/);
   assert.match(packageSource, /skills\/station-advisor-global-v2/);
   assert.match(packageSource, /skills\/station-public-info-v1/);
   assert.match(packageSource, /skills\/member-self-service-v1/);
   assert.match(packageSource, /skills\/identity-and-permission-v1/);
   assert.match(packageSource, /skills\/health-general-guidance-v1/);
   assert.doesNotMatch(packageSource, /skills\/health-management-(?:v1|multidomain-v2|adaptive-dialogue-v3)/);
-  assert.match(indexSource, /<title>小安站点咨询顾问 V1\.5\.20<\/title>/);
+  assert.match(indexSource, /<title>小安站点咨询顾问 V1\.5\.22<\/title>/);
   assert.match(viteSource, /__APP_VERSION__/);
   assert.match(viteSource, /"xiaoa-fullbody-extension-v1\.0\.0\.png"/);
   assert.match(packageSource, /"artifactName": "XiaoAn-Health-Kiosk-\$\{version\}-\$\{arch\}\.\$\{ext\}"/);

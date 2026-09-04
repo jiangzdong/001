@@ -104,8 +104,9 @@ test("every resident list page and ledger preview resolves to that resident's ex
     assert.equal(points.ledgerPreview[0].ledgerId, entityRecord(dataset, "pointLedger", residentGlobalIndex(dataset, resident, 1)).ledgerId);
     const labels = dataset.toolResponse("health_risk_assessment_mcp.get_latest_health_labels", { seniorId: resident.seniorId });
     const evaluations = dataset.toolResponse("health_evaluation_service_mcp_cms.get_health_evaluation_results", { seniorId: resident.seniorId });
-    assert.equal(labels.medicalHistoryLabels[0].sourceId, entityRecord(dataset, "healthLabels", residentGlobalIndex(dataset, resident, 1)).labelId);
-    assert.deepEqual(evaluations.results.map((item) => item.evaluationId), Array.from({ length: 4 }, (_, ordinal) => entityRecord(dataset, "healthEvaluations", residentGlobalIndex(dataset, resident, ordinal + 1)).evaluationId));
+    if (resident.healthState === "no-record") assert.deepEqual(labels.medicalHistoryLabels, []);
+    else assert.equal(labels.medicalHistoryLabels[0].sourceId, entityRecord(dataset, "healthLabels", residentGlobalIndex(dataset, resident, 1)).labelId);
+    assert.deepEqual(evaluations.results.map((item) => item.evaluationId), Array.from({ length: 4 }, (_, ordinal) => entityRecord(dataset, "healthEvaluations", residentGlobalIndex(dataset, resident, ordinal + 1))).filter((item) => item.available).map((item) => item.evaluationId));
   }
 });
 

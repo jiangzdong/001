@@ -18,6 +18,7 @@ const { createVirtualSeniorFixtureMcp } = require("./harness/virtual-senior-fixt
 const { createVirtualSeniorOrchestrator } = require("./harness/virtual-senior-orchestrator.cjs");
 const { createCommunityJobRunner } = require("./harness/virtual-senior-community-jobs.cjs");
 const { createCommunityDataset, selectResidents } = require("./harness/virtual-senior-community-dataset.cjs");
+const { createVirtualSeniorLiveSession } = require("./harness/virtual-senior-live-session.cjs");
 const { createDeepSeekVariantCandidateGenerator, createVirtualSeniorArtifactStore, createVirtualSeniorVariantGenerator } = require("./harness/virtual-senior-variant-artifacts.cjs");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
@@ -59,6 +60,23 @@ let virtualSeniorOrchestrator;
 let virtualSeniorCommunityJobs;
 let virtualSeniorControlWindow;
 let virtualSeniorInitialization;
+let virtualSeniorLive;
+const liveOwners = new Map();
+function liveFor(event) {
+  if (!virtualSeniorEnabled) throw new Error("请先启动隔离测试模式");
+  virtualSeniorLive ||= createVirtualSeniorLiveSession({
+    reportRoot: path.join(app.getPath("userData"), "virtual-senior-live-reports"),
+    onEvent: (owner, value) => { const sender = liveOwners.get(owner); if (sender && !sender.isDestroyed()) sender.send("virtual-senior:live-event", value); },
+  });
+  const sender = event.sender;
+  if (!liveOwners.has(sender.id)) {
+    liveOwners.set(sender.id, sender);
+    const close = () => { void virtualSeniorLive.closeOwner(sender.id); };
+    sender.once("destroyed", () => { close(); liveOwners.delete(sender.id); });
+    sender.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => { if (isMainFrame && !isInPlace) close(); });
+  }
+  return virtualSeniorLive;
+}
 const virtualSeniorStartupEnabled = process.argv.includes("--virtual-senior-test");
 let virtualSeniorEnabled = virtualSeniorStartupEnabled;
 const virtualSeniorAutoOpen = process.argv.includes("--open-virtual-senior");
@@ -800,6 +818,14 @@ app.whenReady().then(async () => {
     return { ok: true };
   });
   ipcMain.handle("virtual-senior:status", () => virtualSeniorOrchestrator?.status() || { available: false, enabled: false });
+  ipcMain.handle("virtual-senior:resident-search", (event, payload) => liveFor(event).search(payload));
+  ipcMain.handle("virtual-senior:resident-detail", (event, payload) => liveFor(event).detail(payload));
+  ipcMain.handle("virtual-senior:live-catalog", (event) => liveFor(event).catalog());
+  ipcMain.handle("virtual-senior:live-prepare", (event, payload) => liveFor(event).prepare(event.sender.id, payload));
+  ipcMain.handle("virtual-senior:live-begin", (event, runId) => liveFor(event).begin(event.sender.id, runId));
+  ipcMain.handle("virtual-senior:live-ack", (event, payload) => liveFor(event).acknowledge(event.sender.id, payload));
+  ipcMain.handle("virtual-senior:live-cancel", (event, runId) => liveFor(event).cancel(event.sender.id, runId));
+  ipcMain.handle("virtual-senior:live-reports", (event) => liveFor(event).reports());
   ipcMain.handle("virtual-senior:catalog", () => {
     if (!virtualSeniorOrchestrator) throw Object.assign(new Error("当前启动未启用虚拟长者测试"), { code: "TEST_MODE_DISABLED" });
     return virtualSeniorOrchestrator.catalog();
@@ -900,6 +926,7 @@ app.whenReady().then(async () => {
     for (const controller of activeDeepSeekRequests.values()) controller.abort("shutdown");
     activeDeepSeekRequests.clear();
     void virtualSeniorFixtureMcp?.close();
+    void virtualSeniorLive?.close();
     speech.close();
   });
 });
