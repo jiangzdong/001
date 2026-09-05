@@ -61,11 +61,13 @@ let virtualSeniorCommunityJobs;
 let virtualSeniorControlWindow;
 let virtualSeniorInitialization;
 let virtualSeniorLive;
+let speechService;
 const liveOwners = new Map();
 function liveFor(event) {
   if (!virtualSeniorEnabled) throw new Error("请先启动隔离测试模式");
   virtualSeniorLive ||= createVirtualSeniorLiveSession({
     reportRoot: path.join(app.getPath("userData"), "virtual-senior-live-reports"),
+    speech: speechService,
     onEvent: (owner, value) => { const sender = liveOwners.get(owner); if (sender && !sender.isDestroyed()) sender.send("virtual-senior:live-event", value); },
   });
   const sender = event.sender;
@@ -488,11 +490,20 @@ async function interpretAssessment(payload) {
 
 function createWindow() {
   const displays = screen.getAllDisplays();
+  const primaryDisplay = screen.getPrimaryDisplay();
   const useDualScreenTest = virtualSeniorEnabled && virtualSeniorAutoOpen && displays.length > 1;
-  const targetDisplay = displays
+  // The kiosk belongs on the extension display whenever one is connected.
+  // Prefer a portrait extension, but do not silently fall back to the laptop
+  // just because macOS currently reports that extension in landscape.
+  const externalDisplays = displays.filter((display) => display.id !== primaryDisplay.id);
+  const targetDisplay = externalDisplays
     .filter((display) => display.bounds.height > display.bounds.width)
     .sort((left, right) => (right.bounds.width * right.bounds.height) - (left.bounds.width * left.bounds.height))[0]
-    || screen.getPrimaryDisplay();
+    || externalDisplays.sort((left, right) => (right.bounds.width * right.bounds.height) - (left.bounds.width * left.bounds.height))[0]
+    || displays
+      .filter((display) => display.bounds.height > display.bounds.width)
+      .sort((left, right) => (right.bounds.width * right.bounds.height) - (left.bounds.width * left.bounds.height))[0]
+    || primaryDisplay;
   const targetBounds = targetDisplay.bounds;
   const windowed = process.argv.includes("--windowed");
   const windowWidth = windowed ? Math.min(750, targetBounds.width) : targetBounds.width;
@@ -565,19 +576,20 @@ function createVirtualSeniorControlWindow() {
     : screen.getPrimaryDisplay();
   const displays = screen.getAllDisplays();
   const controlDisplay = displays.find((display) => display.id !== kioskDisplay.id) || screen.getPrimaryDisplay();
-  const area = controlDisplay.workArea;
-  const width = Math.max(720, Math.min(1440, area.width - 48));
-  const height = Math.max(720, Math.min(1080, area.height - 48));
+  const area = controlDisplay.bounds;
+  // In dual-screen mode the test centre owns the other display.  Using its
+  // full bounds avoids a small, floating control window beside the kiosk.
+  const width = area.width;
+  const height = area.height;
   const win = new BrowserWindow({
-    x: area.x + Math.max(0, Math.floor((area.width - width) / 2)),
-    y: area.y + Math.max(0, Math.floor((area.height - height) / 2)),
+    x: area.x,
+    y: area.y,
     width,
     height,
     minWidth: 720,
     minHeight: 720,
     title: `小安虚拟长者测试中心 ${app.getVersion()}`,
-    backgroundColor: "#f4f8fb",
-    autoHideMenuBar: true,
+    backgroundColor: "#f4f8fb", autoHideMenuBar: true, frame: false, fullscreen: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       additionalArguments: ["--virtual-senior-test", "--virtual-senior-control", "--virtual-senior-dual-screen"],
@@ -589,6 +601,7 @@ function createVirtualSeniorControlWindow() {
   });
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, "..", "dist", "client", "index.html"));
+  win.once("ready-to-show", () => win.setFullScreen(true));
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.on("closed", () => { virtualSeniorControlWindow = null; });
   virtualSeniorControlWindow = win;
@@ -598,7 +611,7 @@ function createVirtualSeniorControlWindow() {
 app.whenReady().then(async () => {
   migrateLegacyUserData();
   provisionDeepSeekKeyFromEnvironment();
-  const speech = createSpeechService({ app });
+  const speech = speechService = createSpeechService({ app });
   const avatar = createAvatarService({ cacheDir: path.join(app.getPath("userData"), "avatar-video-cache") });
   runtimeTelemetry = createRuntimeTelemetry({ directory: path.join(app.getPath("userData"), "telemetry") });
   try {
@@ -822,6 +835,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("virtual-senior:resident-detail", (event, payload) => liveFor(event).detail(payload));
   ipcMain.handle("virtual-senior:live-catalog", (event) => liveFor(event).catalog());
   ipcMain.handle("virtual-senior:live-prepare", (event, payload) => liveFor(event).prepare(event.sender.id, payload));
+  ipcMain.handle("virtual-senior:live-prepare-retry", (event, payload) => liveFor(event).prepareRetry(event.sender.id, payload));
   ipcMain.handle("virtual-senior:live-begin", (event, runId) => liveFor(event).begin(event.sender.id, runId));
   ipcMain.handle("virtual-senior:live-ack", (event, payload) => liveFor(event).acknowledge(event.sender.id, payload));
   ipcMain.handle("virtual-senior:live-cancel", (event, runId) => liveFor(event).cancel(event.sender.id, runId));

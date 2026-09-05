@@ -1202,8 +1202,11 @@ export function StationAdvisorApp() {
     if (operationId !== operationIdRef.current) return;
 
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const allowBrowserSpeech = new URLSearchParams(window.location.search).get("allowWebSpeech") === "1";
-    if (Recognition && allowBrowserSpeech) {
+    // The local SenseVoice API remains the preferred web path.  Browser
+    // recognition is a permission-scoped fallback, not a hidden URL switch:
+    // otherwise a stopped local preview leaves a capable browser unable to
+    // recognize any voice at all.
+    if (Recognition) {
       const recognition = new Recognition();
       recognitionRef.current = recognition;
       let latestText = "";

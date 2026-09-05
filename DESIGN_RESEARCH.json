@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "brief_sha256": "22062ef2befae79f914638ac8a0b27c6146416931a8ff1f9e02fa06430314f91",
+  "references": [
+    {
+      "id": "ref-01",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/254066519/Nura-Healthcare-Platform-UX-UI-Dashboard-Design",
+      "title": "Nura Healthcare Platform UX UI Dashboard Design",
+      "author": "Kraftbase、Gulshan Ali、Fractal Labs",
+      "viewed_at": "2026-09-05T10:20:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "浅灰绿医疗仪表盘以左导航和多指标面板建立清楚层级，但整体更偏消费者健康产品。",
+      "transfer": "迁移低噪声分区、紧凑指标层级和任务区留白，用于左侧控制区域的信息组织。",
+      "exclude": "排除低对比浅绿色、消费者化健康趋势卡和与测试任务无关的装饰面板。",
+      "relevance": "适合校准高密医疗信息在冷静表面上的可扫描性，与方案一左控结构相关。",
+      "image": { "path": "evidence/design-research-20260905/ref-01.jpg", "sha256": "b9ceca694b757c980062b5035d889147b617635324e8388e1666af35a38d099b" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-02",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/244352719/Digital-Health-Heart-Monitoring-Platform",
+      "title": "Digital Health Heart Monitoring Platform",
+      "author": "Michael Gradienta",
+      "viewed_at": "2026-09-05T10:22:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "红色点阵心电、设备展示和个人资料形成强指标焦点，但画面更接近宣传展示。",
+      "transfer": "仅迁移当前对象与关键指标的视觉聚焦方式，用于所选长者及当前轮次摘要。",
+      "exclude": "排除红色品牌主色、设备样机、营销大标题和非操作性的心电装饰背景。",
+      "relevance": "用于验证健康体征不能淹没当前测试任务，同时仍需让关键数据容易定位。",
+      "image": { "path": "evidence/design-research-20260905/ref-02.jpg", "sha256": "f3f182166ba885024141726587c60736bdf0c8c8efd2e37d14d1a7264a6d3002" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-03",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/251525471/Healthcare-Platform-UXUI-Design-for-Patients-Doctors",
+      "title": "Healthcare Platform UX UI Design for Patients Doctors",
+      "author": "YA Design",
+      "viewed_at": "2026-09-05T10:24:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "白底蓝灰侧栏、预约列表和大人物照片让主任务清楚，操作层级相对安静。",
+      "transfer": "迁移白底蓝灰导航和单一主操作层级，强化选择画像到启动测试的连续路径。",
+      "exclude": "排除大幅人物摄影和患者营销表达，数字人区域只复用当前生产素材与真实组件。",
+      "relevance": "适合验证产品经理工作台的主任务突出程度和低干扰医疗视觉语言。",
+      "image": { "path": "evidence/design-research-20260905/ref-03.png", "sha256": "f0a1121a45384039d8f612e70c182e3205167f4256dc39bfd1061488860f8742" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-04",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/243126265/Luna-Health-App-SaaS-UX-UI-Dashboard-Design",
+      "title": "Luna Health App SaaS UX UI Dashboard Design",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:26:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "生活方式大图和品牌口号主导，缺少多轮测试控制台所需的连续操作结构。",
+      "transfer": "仅参考大面积留白与简短标题节奏，不迁移其主要页面构成。",
+      "exclude": "排除生活方式摄影、营销口号和把关键执行状态隐藏在视觉故事之后的结构。",
+      "relevance": "作为反例帮助确认本项目应是任务工作台而不是健康品牌落地页。",
+      "image": { "path": "evidence/design-research-20260905/ref-04.png", "sha256": "1d4fb70181435a3d592daea47fe2e460aaa4503f75846bb7dd43e5a7d372da51" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-05",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/244192609/Veri-Health-App-SaaS-UX-UI-Design",
+      "title": "Veri Health App SaaS UX UI Design",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:28:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "深色编辑式分栏与绿色强调建立强层级，整体表达锐利并带明显品牌姿态。",
+      "transfer": "迁移左右主次比例和单一当前任务焦点，不迁移暗色主题与高饱和强调。",
+      "exclude": "排除深色背景、荧光绿、杂志式品牌排版和不适合站点信任场景的强对比。",
+      "relevance": "帮助比较观察区与控制区的权重，确认右侧产品界面应始终是视觉主角。",
+      "image": { "path": "evidence/design-research-20260905/ref-05.png", "sha256": "768b510d64ac95fba19485f03257b84ea1b225a73e3c860fe8683fd645dc4c23" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-06",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/249136695/Healthcare-SaaS-UX-UI-Dashboard-Design",
+      "title": "Healthcare SaaS UX UI Dashboard Design",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:30:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "长篇深色案例包含密集业务数据与流程叙事，状态丰富但视觉负担较重。",
+      "transfer": "迁移从准备到完成的阶段叙事和结果回看关系，用于语音阶段与历史重测链。",
+      "exclude": "排除霓虹绿色、超长滚动案例和把多个图表塞入同一观察视口的做法。",
+      "relevance": "对多阶段语音和工具执行过程的结构表达有参考价值，但不作为色彩来源。",
+      "image": { "path": "evidence/design-research-20260905/ref-06.jpg", "sha256": "81eb2b681543ffd610ec62f26308b8c7468bc0692e93f408ac494d76756ab749" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-07",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/247397693/Docuverse-AI-Healthcare-App-UXUI-Case-Study",
+      "title": "Docuverse AI Healthcare App UX UI Case Study",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:32:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "白色编辑式标题和医疗图标留白充分，信息少而清楚，但不是执行型控制台。",
+      "transfer": "迁移简洁标题、图标配文字和大段留白，用于受阻或失败原因的清楚说明。",
+      "exclude": "排除大字号宣传标题和以静态说明替代实时状态、操作与证据的页面结构。",
+      "relevance": "用于约束状态说明的可读性，避免失败信息退化为工程日志或密集代码。",
+      "image": { "path": "evidence/design-research-20260905/ref-07.jpg", "sha256": "c731d2f15b10e7e47c36b5c05d47358d89cff0ff2211afdf8b19cf3a8e737a09" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-08",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/254473311/Pomelo-UX-UI-dashboard-design",
+      "title": "Pomelo UX UI Dashboard Design",
+      "author": "Brenda Legone",
+      "viewed_at": "2026-09-05T10:34:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "粉色客户管理仪表盘包含完整状态、组件规范和双主题，系统性强但品牌色不适用。",
+      "transfer": "迁移一致的状态变体和组件复用思路，让通过、失败、受阻、取消保持同一语法。",
+      "exclude": "排除粉色品牌主色、暗色主题和与长者测试无关的销售指标卡。",
+      "relevance": "适合校准记录列表与状态组件的一致性，避免每种结果使用不同装饰套路。",
+      "image": { "path": "evidence/design-research-20260905/ref-08.png", "sha256": "e3d52375242ba68051fa81784b6b640cd5713158e77cb391ece996f96768b5ee" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-09",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/245150673/SmileCare-Web-Platform-Dental-Workflows",
+      "title": "SmileCare Web Platform Dental Workflows",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:36:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "蓝色医疗工作台以清楚信息面板和设备画布建立专业、可信且克制的层级。",
+      "transfer": "迁移冷白蓝表面、操作区与观察区的完整容器边界和清楚的当前任务提示。",
+      "exclude": "排除设备样机外框、牙科品牌元素和与当前测试无关的业务卡片。",
+      "relevance": "与方案一的冷色工作台、右侧真实产品画布和专业信任感最直接相关。",
+      "image": { "path": "evidence/design-research-20260905/ref-09.png", "sha256": "5978f0099344b0f12687db95987678a78ec3b6c5c6120bb490f85b81a096ee7a" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-10",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/161215951/EOS-Design-System-UI-kit-Library",
+      "title": "EOS Design System UI Kit Library",
+      "author": "Fiona Bui",
+      "viewed_at": "2026-09-05T10:38:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "设计系统展示组件、Token 和状态变体的一致关系，适合检查交互状态是否完整。",
+      "transfer": "迁移统一状态组件、图标与文字并用、焦点和禁用态的一致设计方法。",
+      "exclude": "排除紫色品牌色、展示型组件墙和未经业务筛选的大量组件变体。",
+      "relevance": "直接支持轮次选择、语音阶段、失败受阻和重测按钮的状态一致性检查。",
+      "image": { "path": "evidence/design-research-20260905/ref-10.png", "sha256": "a1d3ad3e56ba9af1798c21a7ca10e58678c1fbd6743718416573b6f6d063cf4d" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-11",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/248586179/Cardiology-Healthcare-Website-App-Design",
+      "title": "Cardiology Healthcare Website App Design",
+      "author": "Fulcrum Rocks Studio",
+      "viewed_at": "2026-09-05T10:40:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "白色品牌页面加入花卉和消费医疗视觉，内容分区明确但装饰性较强。",
+      "transfer": "只迁移长段说明的标题和正文层级，用于健康数据质量与测试边界说明。",
+      "exclude": "排除花卉装饰、消费品牌摄影和会分散测试人员注意力的营销构图。",
+      "relevance": "作为反例确认健康说明需清楚但不应抢占工具执行和观察流程的优先级。",
+      "image": { "path": "evidence/design-research-20260905/ref-11.png", "sha256": "f518957edddfe7691dc59dc50fe538f34847a3e035bffb1bd4b3035f25f54132" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    },
+    {
+      "id": "ref-12",
+      "platform": "behance",
+      "url": "https://www.behance.net/gallery/235041037/Zentum-Health-Platform-Website-UIUX-and-Product-Design",
+      "title": "Zentum Health Platform Website UI UX and Product Design",
+      "author": "作品详情当前未显示可核验作者署名",
+      "viewed_at": "2026-09-05T10:42:00+08:00",
+      "status": "visually-reviewed",
+      "observation": "浅蓝健康屏结合人物图、数字和图表，数值层级易读但图片占比偏高。",
+      "transfer": "迁移浅蓝状态表面和关键数值层级，用于体征详情与批量统计结果。",
+      "exclude": "排除照片主导、无关趋势图和把合成健康数据包装成医疗诊断结论的表达。",
+      "relevance": "用于复核长者体征数据的可读性与合成测试标识，避免健康信息过度装饰。",
+      "image": { "path": "evidence/design-research-20260905/ref-12.png", "sha256": "80bd53b49ffb5e42593435f84241ca6600e830fb973bd9d8af6d811444397526" },
+      "view_log": { "path": "evidence/design-research-20260905/view-log.md", "sha256": "8a97377a8f191201de3c7b8996c1c12e46887e7ce2dab1ce78c41779df564127" }
+    }
+  ],
+  "blocked_platforms": {
+    "pinterest": {
+      "reason": "当前未取得可把作者、作品详情页和原图可靠对应的 Pinterest 证据，因此不以缩略图计数并由十二条 Behance 实际看图补足。",
+      "attempt_log": { "path": "evidence/design-research-20260905/blocked-platforms.md", "sha256": "57e7455c847b1d76249e9a9c4f5d487a39d890d483577854a62e3e488832f640" }
+    },
+    "dribbble": {
+      "reason": "三个 Dribbble 作品详情请求返回真人验证页，受控浏览器也超时；未绕过验证并由十二条 Behance 实际看图补足。",
+      "attempt_log": { "path": "evidence/design-research-20260905/blocked-platforms.md", "sha256": "57e7455c847b1d76249e9a9c4f5d487a39d890d483577854a62e3e488832f640" }
+    }
+  },
+  "presentation_log": { "path": "evidence/design-research-20260905/presentation-log.md", "sha256": "37766db95fc82acfb221b752d2da08c2f328479a5033197c18659edf81bcad90" },
+  "presented_reference_ids": ["ref-01", "ref-09", "ref-10"],
+  "directions": [
+    {
+      "id": "A",
+      "reference_ids": ["ref-01", "ref-09", "ref-10"],
+      "transformation": "把医疗工作台的冷静表面、清楚任务层级和一致状态语法转化为左侧选人选轮次、右侧真实观察的画像联调台；不复制来源版式、照片或品牌色。",
+      "prompt": { "path": "evidence/design-research-20260905/direction-a.md", "sha256": "af903094fc6b65c8551639157d1df3ed5eacc667d082bf5cba913e35315f1304" }
+    },
+    {
+      "id": "B",
+      "reference_ids": ["ref-03", "ref-05", "ref-07"],
+      "transformation": "把强主次分栏和留白转化为右侧最大化的专注观察方向，同时保留必要测试控制；不复制暗色、编辑式标题或人物摄影。",
+      "prompt": { "path": "evidence/design-research-20260905/direction-b.md", "sha256": "f540ae5fb5b128b61d80d458284c7d42058ace581627214480a1b3568871b01a" }
+    },
+    {
+      "id": "C",
+      "reference_ids": ["ref-06", "ref-08", "ref-12"],
+      "transformation": "把密集数据流程、状态体系和数字层级转化为适合社区规模检索的居民表方向；不复制霓虹、粉色、暗色或无关指标卡。",
+      "prompt": { "path": "evidence/design-research-20260905/direction-c.md", "sha256": "7c8942f62c04e49a941cfeb11e06c3fccfa775b2c9b7fb2bc95c2a27a689eb6a" }
+    }
+  ]
+}

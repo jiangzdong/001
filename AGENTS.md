@@ -29,6 +29,9 @@ When implementing from a selected generated mock, treat that image as the source
 - The user explicitly reaffirmed that resident health data and vital signs belong in the station MCP test scope. Audit real values, units, per-resident history, time filters, missing/stale/conflicting data and permissions separately from interface shape coverage; generic health Q&A is not evidence of personal health-query coverage. Do not enable production personal-data reads without the corresponding authorization path.
 - The lip-development task has ended. The user directed remaining development to continue in the current task; do not route testing/UI/health work back to the completed lip task unless the user explicitly requests that again.
 - Selecting a resident must default to a continuous multi-turn journey covering all 5 MCP / 16 Tool plans in one bound session. Follow-ups must reuse earlier results; distinguish actual successful calls, permission blocks, failed calls and dependency/no-data skips. Never count one Q&A or a planned tool list as full live coverage.
+- Synthetic residents must have deterministic Chinese simulation names, searchable alongside their immutable IDs. Names may repeat; never use a display name as identity or authorization.
+- The user requires mandatory speech testing, distinct blocked/failed states with explanatory text, reruns from test records, and all/single/multiple selection across the 22 rounds. Show any added prerequisite rounds explicitly. Preserve original reports and link each rerun to its source.
+- Voice acceptance must distinguish actual local synthesis, recognized text, and completed playback from text-only diagnostics, stub tests, microphone capture, and acoustic output. Never silently skip speech or override a failed transcript with the scripted question and call it passed; critical health/permission/pagination words must not be excused by a low aggregate character-error rate.
 
 ## Mandatory Taste gate
 

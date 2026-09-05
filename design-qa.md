@@ -1180,6 +1180,14 @@ final result: conditionally passed (M2a headless contract and regression gates p
 
 final result: conditionally passed (M2b real local SenseVoice fixed-WAV gate and regressions pass; broader audio conditions, Windows media gates, and device acceptance remain pending)
 
+# 2026-09-04 扩展屏全屏落位修复
+
+- Design Read：保持既有适老 9:16 医疗蓝终端，扩展屏只决定窗口落位与完整可视范围，不重排人物、聊天或输入舱。`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：外接屏上的完整终端高度、人物比例、冷白蓝色系、全屏无标题栏及主屏/测试控制台分工。
+- 增强：双屏时优先选择非主显示器；外接屏即使当前横向也不再回退主屏；虚拟长者测试控制台在另一块显示器全屏。
+- 删除：将“仅竖屏”作为外接显示器唯一识别条件，以及控制台居中小窗造成的双屏可用面积浪费。
+- 重做：无视觉表面、图标、字体或动效重做。验收需以新目录包在双屏实际显示器上的窗口落位为准；当前仅有启动逻辑与自动回归候选证据。
+
 # 2026-09-03 V1.5.19 虚拟长者社区级数据合同与控制台
 
 ## Taste 结论
@@ -1203,3 +1211,13 @@ final result: conditionally passed (M2b real local SenseVoice fixed-WAV gate and
 - 锁定 Node 直接运行 Vite 构建成功，`4582 modules transformed`，Sites 后处理完成。`pnpm run build` 曾受无 TTY 时 pnpm 保护拒绝清理现有依赖，中止后未清理或重装；直接 Vite 结果才是当前构建证据。
 - 已实现 `smoke=64`、`regression=1000`、`community-full=10000`、`stress=50000` 的确定性 manifest；默认全量预算 `3,514,748` 条合成跨域记录，主键与 manifest 随 seed 稳定、不同 seed 隔离。
 - 当前为开发候选：尚未完成全量 10,000 人 Tool 批次的暂停/恢复压力实跑、真实 Electron 操作截图、Windows 2400×3840 还原对比、实体设备和媒体层验收；`PRE_DELIVERY_GATE` 保持 FAIL。
+
+## 2026-09-06 V1.5.24 单画像语音观察终验
+
+- 视觉事实源为用户选定的 `docs/design/virtual-senior-live-observer/option-1.png`；本轮将它与当前 App 首屏合成在 `QA-EXTERNAL/virtual-senior-community/live-voice-ui-20260906/source-final2/design-comparison-option1-vs-current.png` 中同屏检查。实现保留双栏任务台、冷白医疗蓝、搜索→居民→摘要→场景→主操作路径和右侧真实产品画布，并使用现有正式人物素材；没有混用另外两稿。
+- 首轮真实运行发现 P1：展开 22 项选择后启动，长面板会把“停止测试”推到首屏之外。修复为开始或重测时自动收起轮次面板，最终运行截图 `03-live-voice-running-1440x1024.png` 中停止按钮保持首屏可达。
+- 当前源码 Electron 报告 `QA-EXTERNAL/virtual-senior-community/live-voice-ui-20260906/source-final2/live-voice-ui-report.json` 为 PASS：确定性中文模拟姓名成立；轮次清单 22 项、单选 1 项；单侧线条 0、低于 44px 的交互控件 0、横向溢出 false、console error 0。结果页保留重新测试，窄屏 750×1200 使用移动切换且无横向溢出。
+- 独立 V1.5.24 macOS arm64 App 从普通“终端设置→虚拟长者测试→单人观察”路径再次执行同一验收，报告 `QA-EXTERNAL/virtual-senior-community/live-voice-ui-20260906/packaged-v1.5.24/live-voice-ui-report.json` 为 PASS。通过态完整表面为绿色；停止后的重测记录完整表面为黄色“受阻”，保留来源 runId，原记录未被覆盖。
+- 语音证据范围：测试问题由本机 VITS 合成、浏览器 AudioContext 实际播放、SenseVoice 本地识别，识别文本再进入 Harness；回答音频完成本机合成与实际播放。报告不保存 PCM，并明确 `answerAudioSemanticFidelity`、实体麦克风、现场扬声器声学、口型、生产 MCP 均未验证。日志发现当前 VITS 会忽略数字、日期和英文单位，故未将回答音频逐字语义计入 PASS。
+- 最终设计审计：P0 0、P1 0、P2 0；P3 两项为未做 Windows 目标触屏/观看距离和系统级辅助技术实测。视觉与交互内部评审 96/100；这是本机产品经理测试工作台的设计判断，不是生产数据、实体设备或动态口型验收。
+- 回归：完整 Node 305/305 PASS；Vite 4585 modules transformed、Sites 后处理 PASS。打包 App 位于 `release/live-voice-v1.5.24/mac-arm64/小安站点咨询顾问 V1.5.24.app`，未覆盖 V1.5.23；`app.asar` SHA-256 为 `a43d72d19fdf07e7a29b0c8ac7f58d46258741747987c379c45af5d95328a768`。

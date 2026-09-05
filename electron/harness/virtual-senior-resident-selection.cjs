@@ -75,6 +75,7 @@ function publicResident(resident) {
     seniorId: resident.seniorId,
     residentIndex: resident.residentIndex,
     displayCode: resident.displayCode,
+    displayName: resident.displayName,
     profileVersion: resident.profileVersion,
     cohort: { ...resident.cohort },
     profile: {
@@ -136,6 +137,7 @@ function createResidentBinding(dataset, resident) {
     seniorId: resident.seniorId,
     residentIndex: resident.residentIndex,
     displayCode: resident.displayCode,
+    displayName: resident.displayName,
   });
 }
 
@@ -163,7 +165,7 @@ function createVirtualSeniorResidentSelection({ dataset = createCommunityDataset
     for (let index = 0; index < dataset.residents; index += 1) {
       const resident = dataset.residentAt(index);
       if (!matchesCohort(resident, cohort)) continue;
-      const searchable = `${resident.displayCode} ${resident.seniorId}`.toLowerCase();
+      const searchable = `${resident.displayName} ${resident.displayCode} ${resident.seniorId}`.toLowerCase();
       if (query && !searchable.includes(query)) continue;
       matches.push(resident);
     }

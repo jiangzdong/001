@@ -84,6 +84,7 @@ contextBridge.exposeInMainWorld("kioskBridge", {
   virtualSeniorResidentDetail: (payload) => ipcRenderer.invoke("virtual-senior:resident-detail", payload),
   virtualSeniorLiveCatalog: () => ipcRenderer.invoke("virtual-senior:live-catalog"),
   virtualSeniorLivePrepare: (payload) => ipcRenderer.invoke("virtual-senior:live-prepare", payload),
+  virtualSeniorLivePrepareRetry: (payload) => ipcRenderer.invoke("virtual-senior:live-prepare-retry", payload),
   virtualSeniorLiveBegin: (runId) => ipcRenderer.invoke("virtual-senior:live-begin", runId),
   virtualSeniorLiveAck: (payload) => ipcRenderer.invoke("virtual-senior:live-ack", payload),
   virtualSeniorLiveCancel: (runId) => ipcRenderer.invoke("virtual-senior:live-cancel", runId),

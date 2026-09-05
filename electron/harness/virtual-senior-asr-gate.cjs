@@ -260,4 +260,4 @@ function createVirtualSeniorAsrGate({ manifest, audioRoot, recognize, orchestrat
   return { manifest: () => JSON.parse(JSON.stringify(manifest)), runBatch, runCase };
 }
 
-module.exports = { ASR_MANIFEST_SCHEMA, REAL_ASR_PROVIDER, characterErrorRate, createVirtualSeniorAsrGate, loadRecentAsrBatches, readPcm16Mono16kWave, validateManifest };
+module.exports = { ASR_MANIFEST_SCHEMA, REAL_ASR_PROVIDER, characterErrorRate, containsSensitiveText, createVirtualSeniorAsrGate, loadRecentAsrBatches, readPcm16Mono16kWave, validateManifest };

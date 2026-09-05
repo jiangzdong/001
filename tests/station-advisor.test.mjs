@@ -305,7 +305,8 @@ test("voice and keyboard share one editable composer with privacy-safe fallback"
   assert.match(advisor, /支持自动识别，也可以点击输入/);
   assert.match(advisor, /window\.kioskBridge\?\.recognizePcm/);
   assert.match(advisor, /isLocalSpeechApiReady\(\)/);
-  assert.match(advisor, /get\("allowWebSpeech"\) === "1"/);
+  assert.match(advisor, /const Recognition = window\.SpeechRecognition \|\| window\.webkitSpeechRecognition;/);
+  assert.doesNotMatch(advisor, /allowWebSpeech/);
   assert.doesNotMatch(advisor, /localStorage|sessionStorage|console\.(?:log|info|debug)/);
 });
 

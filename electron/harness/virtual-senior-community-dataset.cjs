@@ -8,7 +8,7 @@ const { MCP_TOOL_CATALOG } = require("./mcp-tools.cjs");
 const { healthFields, METRICS, DAY } = require("./virtual-senior-health-fixtures.cjs");
 
 const DATASET_VERSION = "community-v1.0.0";
-const GENERATOR_VERSION = "community-generator-v1.4.1";
+const GENERATOR_VERSION = "community-generator-v1.5.0";
 const DATA_CLASSIFICATION = "synthetic-test-only";
 const PROFILES = Object.freeze({ smoke: 64, regression: 1000, "community-full": 10000, stress: 50000 });
 const CONTRACT_STATES = Object.freeze(["success", "empty", "missing", "stale", "invalid-input", "unknown-id", "cross-tenant", "auth-required", "denied", "timeout", "service-error", "contract-corrupt"]);
@@ -16,6 +16,10 @@ const SERVER_ORDER = Object.freeze([...new Set(MCP_TOOL_CATALOG.map(([server]) =
 const AGE_BANDS = Object.freeze(["60-69", "70-79", "80-89", "90+"]);
 const PACE = Object.freeze(["slow", "medium", "fast"]);
 const QUALITY = Object.freeze(["complete", "partial", "stale", "conflicting"]);
+// Independent salts preserve all existing IDs, health facts and permissions.
+// Names are synthetic labels, not unique keys or representations of real people.
+const SURNAMES = Object.freeze(Array.from("王李张刘陈杨黄赵吴周徐孙马朱胡郭何林罗高郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎龚贺顾毛郝邵万钱严覃武戴莫孔向常汤"));
+const GIVEN_NAMES = Object.freeze(["建国", "玉兰", "国华", "秀英", "志明", "桂芳", "德明", "淑珍", "永安", "惠芬", "文清", "丽华", "振华", "秋月", "和平", "春梅", "家荣", "素云", "庆生", "瑞芳", "世良", "锦华", "明远", "月琴", "荣生", "佩兰", "景和", "美珍", "正华", "秀琴", "福生", "文慧", "安宁", "香莲", "德成", "翠英", "树仁", "慧敏", "光明", "兰芳", "长安", "静秋", "元庆", "云舒", "培根", "雪梅", "守仁", "宝琴", "学文", "雅珍", "兴民", "素珍", "永康", "冬梅", "启明", "淑芳", "建平", "碧云", "承德", "玲玉", "向荣", "玉英", "海平", "春华"]);
 const SUCCESS_CONTRACTS = Object.freeze({
   "health_risk_assessment_mcp.get_risk_assessment_context": ["seniorId", "profile", "indicatorSummary", "riskHistory", "dataQuality"],
   "health_risk_assessment_mcp.get_latest_health_labels": ["seniorId", "medicalHistoryLabels", "inquirySummary", "vitalSigns", "comprehensiveLabels"],
@@ -91,6 +95,7 @@ function residentFor({ seed = 104729, index = 0, profile = "community-full" } = 
   return {
     seniorId: residentId(seed, normalized), tenantId: 10001, orgId: 10001, residentIndex: normalized,
     synthetic: true, dataClassification: DATA_CLASSIFICATION, profileVersion: "profile-v1", displayCode: `SYN-${String(normalized + 1).padStart(5, "0")}`,
+    displayName: pick(SURNAMES, "synthetic-surname") + pick(GIVEN_NAMES, "synthetic-given-name"), nameSource: "synthetic-generator",
     ageBand, age: ageBand === "60-69" ? 64 : ageBand === "70-79" ? 74 : ageBand === "80-89" ? 84 : 92, speechPace: pick(PACE, "pace"),
     hearing: pick(["normal", "mild-difficulty", "difficulty"], "hearing"), vision: pick(["normal", "large-text", "low-vision"], "vision"),
     digitalLiteracy: pick(["low", "medium", "high"], "literacy"), permissionState: auth, dataQuality: quality, healthState,
@@ -187,7 +192,7 @@ function toolResponse(dataset, key, args = {}, idempotency = new Map()) {
   switch (key) {
     case "health_risk_assessment_mcp.get_risk_assessment_context": {
       const evidence = healthRecords(dataset, resident, "indicatorEvidence", 120);
-      return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, ageBand: resident.ageBand, accessibility: { hearing: resident.hearing, vision: resident.vision } }, indicatorSummary: { evidenceCount: evidence.length, timeWindows: ["1d", "7d", "30d", "90d", "180d"], fixtureState: resident.healthState }, riskHistory: healthRecords(dataset, resident, "riskAssessments", 3), dataQuality: { state: resident.dataQuality, healthState: resident.healthState, generatedAt: dataset.generatedAt }, ...base };
+      return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, displayName: resident.displayName, ageBand: resident.ageBand, accessibility: { hearing: resident.hearing, vision: resident.vision } }, indicatorSummary: { evidenceCount: evidence.length, timeWindows: ["1d", "7d", "30d", "90d", "180d"], fixtureState: resident.healthState }, riskHistory: healthRecords(dataset, resident, "riskAssessments", 3), dataQuality: { state: resident.dataQuality, healthState: resident.healthState, generatedAt: dataset.generatedAt }, ...base };
     }
     case "health_risk_assessment_mcp.get_latest_health_labels": {
       const labels = healthRecords(dataset, resident, "healthLabels", 8);
@@ -218,7 +223,7 @@ function toolResponse(dataset, key, args = {}, idempotency = new Map()) {
       idempotency.set(idempotencyKey, { fingerprint, resultId });
       return { seniorId: resident.seniorId, saved: true, replayed: Boolean(prior), idempotencyKey, resultId, assessment: { level: args.riskAssessmentDraft?.level || "routine", evidenceIds: args.riskAssessmentDraft?.evidence || [], savedAt: "2026-09-03T00:00:00+08:00" }, ...base };
     }
-    case "health_evaluation_service_mcp_cms.get_senior_profile": return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, displayCode: resident.displayCode, ageBand: resident.ageBand, communication: { speechPace: resident.speechPace }, accessibility: { hearing: resident.hearing, vision: resident.vision, digitalLiteracy: resident.digitalLiteracy }, dataQuality: resident.dataQuality }, profileVersion: resident.profileVersion, ...base };
+    case "health_evaluation_service_mcp_cms.get_senior_profile": return { seniorId: resident.seniorId, profile: { seniorId: resident.seniorId, displayName: resident.displayName, displayCode: resident.displayCode, ageBand: resident.ageBand, communication: { speechPace: resident.speechPace }, accessibility: { hearing: resident.hearing, vision: resident.vision, digitalLiteracy: resident.digitalLiteracy }, dataQuality: resident.dataQuality }, profileVersion: resident.profileVersion, ...base };
     case "health_evaluation_service_mcp_cms.get_health_evaluation_results": {
       const results = healthRecords(dataset, resident, "healthEvaluations", 4).map((item) => ({ ...item, type: item.evaluationType }));
       return { seniorId: resident.seniorId, results: args.latestOnly ? results.slice(0, 1) : results, latestOnly: Boolean(args.latestOnly), ...base };

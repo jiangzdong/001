@@ -173,13 +173,18 @@ test("admin dialog is keyboard accessible and AI calls degrade safely", async ()
   assert.match(mainSource, /setPermissionRequestHandler/);
   assert.match(mainSource, /backgroundThrottling:\s*false/);
   assert.match(mainSource, /screen\.getAllDisplays\(\)/);
+  assert.match(mainSource, /const externalDisplays = displays\.filter\(\(display\) => display\.id !== primaryDisplay\.id\)/);
   assert.match(mainSource, /display\.bounds\.height > display\.bounds\.width/);
+  assert.match(mainSource, /\|\| externalDisplays\.sort/);
   assert.match(mainSource, /fullscreen: !windowed/);
   assert.match(mainSource, /frame: false/);
   assert.match(mainSource, /appendSwitch\("force-device-scale-factor", "1"\)/);
   assert.match(mainSource, /width: 1200, height: 1920, contentRotation: 0/);
   assert.match(mainSource, /安全信号/);
   assert.doesNotMatch(mainSource, /联系工作人员/);
+  assert.match(mainSource, /const area = controlDisplay\.bounds/);
+  assert.match(mainSource, /frame: false, fullscreen: true/);
+  assert.match(mainSource, /win\.once\("ready-to-show", \(\) => win\.setFullScreen\(true\)\)/);
 });
 
 test("secondary screens remain visually stable during continuous voice turns", async () => {
@@ -276,7 +281,7 @@ test("portrait talk mode keeps one shared stage boundary and independent top con
   assert.match(styles, /\.topbar-home \{[\s\S]*?min-height: 7\.4cqw/);
 });
 
-test("V1.5.23 keeps one avatar camera baseline, exposes the version, and packages only active station skills", async () => {
+test("V1.5.24 keeps one avatar camera baseline, exposes the version, and packages only active station skills", async () => {
   const [appSource, advisorSource, styles, packageSource, indexSource, viteSource] = await Promise.all([
     readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
     readFile(new URL("../src/StationAdvisorApp.jsx", import.meta.url), "utf8"),
@@ -286,15 +291,15 @@ test("V1.5.23 keeps one avatar camera baseline, exposes the version, and package
     readFile(new URL("../vite.config.mjs", import.meta.url), "utf8"),
   ]);
 
-  assert.match(packageSource, /"version": "1\.5\.23"/);
-  assert.match(packageSource, /"productName": "小安站点咨询顾问 V1\.5\.23"/);
+  assert.match(packageSource, /"version": "1\.5\.24"/);
+  assert.match(packageSource, /"productName": "小安站点咨询顾问 V1\.5\.24"/);
   assert.match(packageSource, /skills\/station-advisor-global-v2/);
   assert.match(packageSource, /skills\/station-public-info-v1/);
   assert.match(packageSource, /skills\/member-self-service-v1/);
   assert.match(packageSource, /skills\/identity-and-permission-v1/);
   assert.match(packageSource, /skills\/health-general-guidance-v1/);
   assert.doesNotMatch(packageSource, /skills\/health-management-(?:v1|multidomain-v2|adaptive-dialogue-v3)/);
-  assert.match(indexSource, /<title>小安站点咨询顾问 V1\.5\.23<\/title>/);
+  assert.match(indexSource, /<title>小安站点咨询顾问 V1\.5\.24<\/title>/);
   assert.match(viteSource, /__APP_VERSION__/);
   assert.match(viteSource, /"xiaoa-fullbody-extension-v1\.0\.0\.png"/);
   assert.match(packageSource, /"artifactName": "XiaoAn-Health-Kiosk-\$\{version\}-\$\{arch\}\.\$\{ext\}"/);

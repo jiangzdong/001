@@ -1,7 +1,7 @@
 {
   "name": "health-kiosk-demo",
-  "productName": "小安站点咨询顾问 V1.5.23",
-  "version": "1.5.23",
+  "productName": "小安站点咨询顾问 V1.5.24",
+  "version": "1.5.24",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -59,7 +59,7 @@
   },
   "build": {
     "appId": "com.clife.xiaoan.healthkiosk",
-    "productName": "小安站点咨询顾问 V1.5.23",
+    "productName": "小安站点咨询顾问 V1.5.24",
     "asar": true,
     "asarUnpack": [
       "scripts/generate-virtual-senior-community-dataset.cjs",
