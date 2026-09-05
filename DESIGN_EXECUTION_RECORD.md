@@ -265,3 +265,4 @@
 - 回归与构建：完整 Node 305/305 PASS；Vite 4585 modules transformed、Sites 后处理 PASS；pre-code 验证器 PASS。设计终验 P0/P1/P2 均为 0，当前范围的交互、构建、截图、视觉对照、回退和限制证据齐备。
 - 明确限制：`answerAudioSemanticFidelity=not-verified`；当前 VITS 日志显示数字、日期、英文单位存在 OOV，不能把“音频已播放”称为回答逐字语义通过。实体麦克风、现场扬声器声学、生产 MCP、Windows 2400×3840、物理双屏和口型不在本节 PASS 内。
 - `PRE_DELIVERY_GATE=PASS`（仅 macOS 本机、合成数据、Fixture MCP、测试问题语音回环和回答音频播放范围）。
+- Git 回退证据：功能提交 `7e3c866` 已推送到 `origin/feat/station-advisor-local-demo`；带注释标签 `backup-v1.5.24-live-voice-20260906` 已推送。提交期间 12/12 个设计参考 LFS 对象上传完成；V1.5.23 的远端提交 `d377f23` 仍保留。
