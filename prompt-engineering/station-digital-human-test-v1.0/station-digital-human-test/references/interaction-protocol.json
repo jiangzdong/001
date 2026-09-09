@@ -1,0 +1,38 @@
+{
+  "protocol": "station-digital-human-interaction",
+  "version": "1.0",
+  "events": {
+    "FACE_RECOGNITION_REQUIRED": {
+      "description": "通知前端进入平台既有的人脸识别与本人授权流程",
+      "trigger": "用户请求本人会员数据或本人健康研判，且平台上下文缺少有效身份或授权信息",
+      "response": {
+        "reply": "查询本人信息前，需要先确认您的身份。",
+        "interaction": {
+          "type": "FACE_RECOGNITION_REQUIRED",
+          "version": "1.0",
+          "purpose": "member_data"
+        }
+      },
+      "purpose_values": {
+        "member_data": "会员积分、钱包记录或会员等级查询",
+        "health_assessment": "结合本人健康资料进行健康研判"
+      },
+      "frontend_behavior": {
+        "artifact_path": "/mnt/user-data/outputs/face-recognition-request.json",
+        "publish_call": "present_files('/mnt/user-data/outputs/face-recognition-request.json')",
+        "consume_marker": true,
+        "display_reply": true,
+        "start_face_recognition": true,
+        "resume_original_request_after_success": true
+      },
+      "constraints": [
+        "公共站点服务、站点活动和通用健康咨询不得触发",
+        "同一请求只触发一次",
+        "运行时必须生成JSON文件并调用present_files，不能只在正文输出JSON",
+        "Skill包内的references文件只是模板，不会自动成为会话附件",
+        "模型不得生成请求ID、人员ID、采集令牌、授权ID或识别结果",
+        "识别失败或取消后不得调用个人数据Tool"
+      ]
+    }
+  }
+}

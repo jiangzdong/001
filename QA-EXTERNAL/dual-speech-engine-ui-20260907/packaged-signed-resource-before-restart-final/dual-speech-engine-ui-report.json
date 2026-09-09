@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-06T17:47:29.573Z",
+  "scope": "source Electron GUI, explicit untrusted development Qwen resource, actual speaker playback",
+  "initial": {
+    "status": "当前使用 VITS 轻量语音",
+    "vitsChecked": true,
+    "qwenChecked": false,
+    "qwenDisabled": false,
+    "controlsBelow44": [],
+    "overflow": false
+  },
+  "qwen": {
+    "requested": "qwen3-tts",
+    "used": "qwen3-tts",
+    "degraded": false,
+    "fallbackReason": null,
+    "samples": 101760,
+    "sampleRate": 24000,
+    "played": true
+  },
+  "qwenFailure": null,
+  "vits": {
+    "requested": "vits",
+    "used": "vits",
+    "degraded": false,
+    "fallbackReason": null,
+    "samples": 50416,
+    "sampleRate": 16000,
+    "played": true
+  },
+  "finalStatus": {
+    "ready": true,
+    "provider": "sherpa-onnx",
+    "asrModel": "SenseVoice Small INT8",
+    "asrPreview": {
+      "mode": "rolling-offline",
+      "intervalMs": 500,
+      "maxWindowSeconds": 6
+    },
+    "lipAlignment": {
+      "mode": "vits-lexicon-pcm-live",
+      "provider": "VITS lexicon + PCM envelope",
+      "offlineAudit": "SenseVoice character timestamps"
+    },
+    "ttsModel": "Qwen3-TTS 1.7B CustomVoice external resource pack",
+    "ttsStreaming": {
+      "enabled": true,
+      "mode": "balanced-progressive-pcm-chunks",
+      "cancellation": true,
+      "parallelPrefetch": 1,
+      "chunkChars": {
+        "minimum": 10,
+        "maximum": 24
+      }
+    },
+    "voices": [
+      {
+        "id": "zh-ll-2",
+        "label": "小安默认女声",
+        "detail": "普通话女声",
+        "modelId": "zh-ll",
+        "sid": 2
+      }
+    ],
+    "offline": true,
+    "warmedModels": [
+      "zh-ll",
+      "sensevoice-alignment"
+    ],
+    "missing": [],
+    "requested": "qwen3-tts",
+    "used": "qwen3-tts",
+    "configured": true,
+    "validated": true,
+    "started": true,
+    "actualUsed": "vits",
+    "degraded": false,
+    "fallbackReason": null,
+    "resourceVersion": "1.0.0-macos-arm64",
+    "engines": [
+      {
+        "id": "vits",
+        "label": "VITS（轻量）",
+        "selectable": true,
+        "ready": true
+      },
+      {
+        "id": "qwen3-tts",
+        "label": "Qwen3-TTS（高质量）",
+        "selectable": true,
+        "ready": true,
+        "reason": null,
+        "resourceVersion": "1.0.0-macos-arm64"
+      }
+    ],
+    "qwen": {
+      "engine": "qwen3-tts",
+      "supported": true,
+      "configured": true,
+      "validated": true,
+      "started": true,
+      "actualUsed": "qwen3-tts",
+      "ready": true,
+      "trust": "release-signed",
+      "untrustedDevelopment": false,
+      "resourceVersion": "1.0.0-macos-arm64",
+      "code": null,
+      "reason": null,
+      "workerGeneration": 1,
+      "queueDepth": 0,
+      "maxQueue": 8,
+      "circuitOpen": false,
+      "circuitRetryAt": null
+    }
+  },
+  "consoleErrors": [],
+  "screenshots": {
+    "initialScreenshot": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/dual-speech-engine-ui-20260907/packaged-signed-resource-before-restart-final/01-answer-voice-settings.png",
+    "qwenScreenshot": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/dual-speech-engine-ui-20260907/packaged-signed-resource-before-restart-final/02-qwen-selected.png",
+    "vitsScreenshot": "/Users/luc/Desktop/SHU/DigitalHuman2D-Handoff-20260901/PROJECT/DigitalHuman2D-Standard-v1.0.0-20260827/source/health-kiosk-demo/QA-EXTERNAL/dual-speech-engine-ui-20260907/packaged-signed-resource-before-restart-final/03-vits-restored.png"
+  },
+  "result": "PASS"
+}

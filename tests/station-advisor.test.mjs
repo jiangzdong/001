@@ -276,6 +276,50 @@ test("terminal settings keeps a saved local key masked and exposes one consisten
   assert.doesNotMatch(advisor, /站点账号已登录|站点账号已退出/);
 });
 
+test("terminal settings offers truthful VITS and Qwen3-TTS answer voice selection", async () => {
+  const [advisor, styles, speechHook] = await Promise.all([
+    readFile(advisorPath, "utf8"),
+    readFile(stylesPath, "utf8"),
+    readFile(speechHookPath, "utf8"),
+  ]);
+
+  assert.match(advisor, /function speechEngineConfigurationApi\(\)/);
+  assert.match(advisor, /bridge\?\.speechEngineStatus \|\| !bridge\?\.setSpeechEngine/);
+  assert.match(advisor, /data-testid="advisor-open-speech-engine"/);
+  assert.match(advisor, /<strong>回答语音<\/strong>/);
+  assert.match(advisor, /function SpeechEngineDialog/);
+  assert.match(advisor, /data-testid=\{`advisor-speech-engine-\$\{option\.id\}`\}/);
+  assert.match(advisor, /title: "VITS"[\s\S]*轻量、省资源，当前平台默认/);
+  assert.match(advisor, /title: "Qwen3-TTS"[\s\S]*Apple Silicon 高质量语音/);
+  assert.match(advisor, /disabled=\{option\.unavailable \|\| loading \|\| saving \|\| !api\}/);
+  assert.match(advisor, /function qwenSpeechEngineUnavailable\(status\)/);
+  assert.match(advisor, /option\.installed \?\? option\.configured \?\? status\?\.qwen\?\.configured/);
+  assert.match(advisor, /installed === false \|\| code\.includes\("NOT_CONFIGURED"\) \|\| code\.includes\("MISSING"\)/);
+  assert.doesNotMatch(advisor, /return !engine \|\| engine\.selectable === false \|\| engine\.installed === false/);
+  assert.match(advisor, /高质量语音资源尚未安装，当前终端将继续使用 VITS/);
+  assert.match(advisor, /高质量语音资源已安装，保存后将进行检测/);
+  assert.match(advisor, /上次资源检测未通过，保存后可重新检测/);
+  assert.match(advisor, /高质量语音暂时不可用，当前终端已自动改用 VITS/);
+  assert.match(advisor, /仅支持 Apple 芯片 Mac，当前终端将继续使用 VITS/);
+  assert.match(advisor, /正在保存语音设置…/);
+  assert.match(advisor, /正在检测高质量语音资源…/);
+  assert.match(advisor, /void refreshSpeechEngineStatus\(\)\.catch\(\(\) => undefined\);/);
+  assert.match(advisor, /speechRuntimeState \? bridge\.speechRuntimeState\(\) : bridge\.speechEngineStatus\(\)/);
+  assert.match(advisor, /if \(hasRuntimeProblem\) speechRuntimeLatchRef\.current = speechEngineUpdate/);
+  assert.match(advisor, /else if \(speechEngineUpdate\.turnComplete\) speechRuntimeLatchRef\.current = null/);
+  assert.match(speechHook, /publishEngineUpdate\(\{ \.\.\.latestEngineUpdate, incomplete: false, turnComplete: true \}\)/);
+  assert.match(advisor, /mergeSpeechEngineRuntimeStatus\(status, speechRuntimeLatchRef\.current\)/);
+  assert.match(advisor, /if \(confirmed\) speechRuntimeLatchRef\.current = null/);
+  assert.match(advisor, /已切换到 \$\{speechEngineLabels\[result\.used\]/);
+  assert.match(advisor, /保存失败，原语音设置保持不变，请稍后重试/);
+  assert.match(advisor, /已自动改用/);
+  assert.match(advisor, /event\.key === "Escape" && !saving\) onBack\(\)/);
+  assert.match(styles, /\.advisor-speech-engine-option \{[^}]*min-height: max\(7\.2cqw, 44px\)/);
+  assert.match(styles, /\.advisor-speech-engine-option:has\(input:focus-visible\)/);
+  assert.match(styles, /\.advisor-speech-engine-dialog \{[^}]*overflow-x: hidden/);
+  assert.doesNotMatch(advisor, /\/Users\/luc|QWEN3_TTS_RESOURCE_PACK/);
+});
+
 test("desktop terminal management configures all five MCP services without exposing bearer tokens", async () => {
   const [advisor, preload, electronMain, styles] = await Promise.all([
     readFile(advisorPath, "utf8"),
@@ -291,6 +335,11 @@ test("desktop terminal management configures all five MCP services without expos
   assert.match(advisor, /modelConfigured === false \? "管理员连接" : "终端管理"/);
   for (const method of ["mcpConfigStatus", "testMcpConfig", "saveMcpConfig", "clearMcpConfig"]) assert.match(preload, new RegExp(`${method}:`));
   for (const channel of ["mcp:config-status", "mcp:test-config", "mcp:save-config", "mcp:clear-config"]) assert.match(electronMain, new RegExp(channel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(electronMain, /ipcMain\.handle\("speech:engine-status", \(\) => speech\.engineStatus\(\)\)/);
+  assert.match(electronMain, /ipcMain\.handle\("speech:validate-engine",[\s\S]*speech\.refreshEngineStatus\(\)/);
+  assert.match(electronMain, /systemVersion: process\.getSystemVersion\(\)/);
+  assert.match(advisor, /QWEN_UNSUPPORTED_MACOS_VERSION/);
+  assert.match(advisor, /需要 macOS/);
   assert.match(electronMain, /activeRuns[\s\S]*MCP_CONFIG_BUSY/);
   assert.match(electronMain, /missingTools\.length === 0/);
   assert.match(styles, /\.advisor-mcp-setup-dialog \{[\s\S]*overflow-y: auto/);
@@ -394,7 +443,7 @@ test("station recognition previews early and submits promptly after speech", asy
   assert.match(advisor, /voiceStateRef\.current = "standby"/);
   assert.match(advisor, /\["listening", "recognizing"\]\.includes\(composerProps\.voiceState\)/);
   assert.match(advisor, /\.trim\(\)\.slice\(0, 120\)/);
-  assert.match(advisor, /setAutoVoiceEnabled\(false\);[\s\S]*Promise\.resolve\(speech\)\.finally/);
+  assert.match(advisor, /setAutoVoiceEnabled\(false\);[\s\S]*Promise\.resolve\(speech\)\.then\(\(completed\)/);
 });
 
 test("station answers use cancellable streaming TTS and abortable local requests", async () => {
@@ -414,6 +463,21 @@ test("station answers use cancellable streaming TTS and abortable local requests
   assert.match(vite, /speechService\.synthesizeStream/);
   assert.match(vite, /response\.once\("close", cancelTurn\)/);
   assert.match(vite, /combineSpeechChunks/);
+});
+
+test("partial speech stops playback and remains visible as an incomplete answer", async () => {
+  const [advisor, speechHook] = await Promise.all([
+    readFile(advisorPath, "utf8"),
+    readFile(speechHookPath, "utf8"),
+  ]);
+  assert.match(speechHook, /result\?\.partial \|\| result\?\.reset/);
+  assert.match(speechHook, /haltStreamPlayback\(\);[\s\S]*queue\.fail/);
+  assert.match(speechHook, /interruptedSourcesRef\.current\.add\(source\)/);
+  assert.match(speechHook, /return false;[\s\S]*finally/);
+  assert.match(speechHook, /语音未完整播放，请重试/);
+  assert.match(speechHook, /高质量语音暂时不可用，已切换轻量语音/);
+  assert.match(advisor, /if \(!completed\) \{[\s\S]*setVoiceState\("error"\)/);
+  assert.match(advisor, /voiceState === "error"[\s\S]*speechError \|\| voiceMessage/);
 });
 
 test("avatar QA speech isolates microphone capture from transition profiling", async () => {

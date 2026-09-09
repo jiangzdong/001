@@ -8,6 +8,32 @@ const label = (value) => words[value] || value;
 Object.assign(words, { journey_partial: "已结束，部分受阻或跳过", partial_failure: "已结束，存在失败", skipped: "未执行", running: "运行中" });
 const bridge = () => window.kioskBridge;
 
+function observedPcm(value) {
+  if (value instanceof Float32Array) return value;
+  if (ArrayBuffer.isView(value)) return Float32Array.from(value);
+  if (Array.isArray(value)) return Float32Array.from(value);
+  if (value && typeof value === "object") {
+    if (Number.isSafeInteger(value.length) && value.length >= 0) return Float32Array.from({ length: value.length }, (_, index) => Number(value[index] || 0));
+    const numericKeys = Object.keys(value).filter((key) => /^\d+$/.test(key)).sort((a, b) => Number(a) - Number(b));
+    if (numericKeys.length) return Float32Array.from(numericKeys, (key) => Number(value[key] || 0));
+  }
+  return new Float32Array();
+}
+
+function observedWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const text = (offset, value) => { for (let index = 0; index < value.length; index++) view.setUint8(offset + index, value.charCodeAt(index)); };
+  text(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); text(8, "WAVE"); text(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, samples.length * 2, true);
+  for (let index = 0; index < samples.length; index++) {
+    const sample = Math.max(-1, Math.min(1, samples[index]));
+    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(null);
@@ -35,56 +61,71 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
   const dialog = useRef(null);
   const frame = useRef(null);
   const selectRequest = useRef(0);
-  const audio = useRef({ context: null, source: null, ticket: 0 });
+  const audio = useRef({ element: null, url: null, ticket: 0 });
+  const nativeVisemeTimelineRef = useRef(null);
 
-  function stopObservedAudio({ close = false } = {}) {
+  function stopObservedAudio() {
     const current = audio.current;
     current.ticket += 1;
-    if (current.source) {
-      try { current.source.stop(); } catch { /* Already ended. */ }
-      current.source.disconnect?.();
-      current.source = null;
-    }
-    if (close && current.context) {
-      void current.context.close?.().catch(() => {});
-      current.context = null;
-    }
+    current.element?.pause();
+    if (current.element) current.element.src = "";
+    current.element = null;
+    if (current.url) URL.revokeObjectURL(current.url);
+    current.url = null;
+  }
+
+  function primeObservedAudio() {
+    stopObservedAudio();
+    try {
+      const url = URL.createObjectURL(observedWav(new Float32Array(800), 8000));
+      const element = new Audio(url);
+      element.preload = "auto"; element.loop = true; element.muted = false; element.volume = 1;
+      audio.current.element = element; audio.current.url = url;
+      void element.play().catch(() => {});
+    } catch { /* The actual playback path will report a concrete failure. */ }
   }
 
   async function playObservedAudio(event) {
     const current = active.current;
     if (!current || event.runId !== current.runId || event.sessionId !== current.sessionId) return;
+    if (event.payload?.nativePlayback) {
+      nativeVisemeTimelineRef.current = {
+        visemes: Array.isArray(event.payload.visemes) ? event.payload.visemes : [],
+        durationMs: Number(event.payload.audio?.durationMs) || 0,
+        startedAtPerformance: performance.now(),
+        alignment: event.payload.alignment || { provider: "unavailable" },
+      };
+      setVoiceStage({ stage: event.payload.stage, status: "running" });
+      return;
+    }
     const ack = (receipt) => bridge()?.virtualSeniorLiveAck?.({ runId: event.runId, sequence: event.sequence, receipt }).catch(() => {});
-    const sourceSamples = event.payload.samples;
+    let samples;
     const sampleRate = Number(event.payload.sampleRate);
-    const samples = sourceSamples instanceof Float32Array ? sourceSamples : Float32Array.from(sourceSamples || []);
-    if (!samples.length || !Number.isFinite(sampleRate) || sampleRate < 8000) { await ack({ ended: false, contextState: "unavailable", muted: false, playedMs: 0 }); return; }
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (typeof AudioContextClass !== "function") { await ack({ ended: false, contextState: "unavailable", muted: false, playedMs: 0 }); return; }
-    stopObservedAudio();
+    try { samples = observedPcm(event.payload.samples); }
+    catch { await ack({ ended: false, contextState: "pcm-invalid", muted: false, playedMs: 0 }); return; }
+    if (!samples.length || !Number.isFinite(sampleRate) || sampleRate < 8000) { await ack({ ended: false, contextState: "pcm-invalid", muted: false, playedMs: 0 }); return; }
     const ticket = audio.current.ticket;
     try {
-      const context = audio.current.context || new AudioContextClass();
-      audio.current.context = context;
-      if (context.state === "suspended") await context.resume();
-      if (context.state !== "running") { await ack({ ended: false, contextState: context.state, muted: false, playedMs: 0 }); return; }
-      const buffer = context.createBuffer(1, samples.length, sampleRate);
-      buffer.copyToChannel(samples, 0);
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(context.destination);
-      audio.current.source = source;
-      const startedAt = context.currentTime;
+      const url = URL.createObjectURL(observedWav(samples, sampleRate));
+      const element = audio.current.element || new Audio();
+      element.pause();
+      if (audio.current.url) URL.revokeObjectURL(audio.current.url);
+      element.src = url; element.preload = "auto"; element.loop = false; element.muted = false; element.volume = 1;
+      audio.current.element = element; audio.current.url = url;
+      const startedAt = performance.now();
       setVoiceStage({ stage: event.payload.stage, status: "running" });
-      source.onended = () => {
-        if (audio.current.ticket !== ticket) return;
-        audio.current.source = null;
-        const playedMs = Math.max(0, (context.currentTime - startedAt) * 1000);
-        void ack({ ended: true, contextState: context.state, muted: false, playedMs });
-      };
-      source.start();
+      await new Promise((resolve, reject) => {
+        element.addEventListener("ended", resolve, { once: true });
+        element.addEventListener("error", () => reject(new Error("HTML_AUDIO_PLAYBACK_FAILED")), { once: true });
+        element.play().catch(reject);
+      });
+      if (audio.current.ticket !== ticket) return;
+      const playedMs = performance.now() - startedAt;
+      stopObservedAudio();
+      await ack({ ended: true, contextState: "running", muted: false, playedMs });
     } catch {
-      await ack({ ended: false, contextState: audio.current.context?.state || "unavailable", muted: false, playedMs: 0 });
+      if (audio.current.ticket === ticket) stopObservedAudio();
+      await ack({ ended: false, contextState: "media-error", muted: false, playedMs: 0 });
     }
   }
 
@@ -117,7 +158,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
         if (event.type === "failed") setError(event.payload.report.error?.message || "测试失败，请重试");
       }
     });
-    return () => { alive.current = false; stopObservedAudio({ close: true }); if (appRoot) appRoot.inert = previousInert; previousFocus?.focus?.(); unsubscribe?.(); if (active.current) void bridge()?.virtualSeniorLiveCancel?.(active.current.runId).catch(() => {}); };
+    return () => { alive.current = false; stopObservedAudio(); if (appRoot) appRoot.inert = previousInert; previousFocus?.focus?.(); unsubscribe?.(); if (active.current) void bridge()?.virtualSeniorLiveCancel?.(active.current.runId).catch(() => {}); };
   }, []);
 
   useEffect(() => {
@@ -163,6 +204,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
   }
   async function start() {
     if (!selected || busy || (scenarioId === "full-journey" && !selectedRoundIds.length)) return;
+    primeObservedAudio();
     setRoundPanelOpen(false); setBusy(true); setError(""); setMessages([]); setReport(null); setStatus("正在准备独立测试会话"); setNarrowView("observe");
     let prepared;
     try {
@@ -194,6 +236,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
   }
   async function startRetry(item) {
     if (busy || !item?.runId) return;
+    primeObservedAudio();
     setRoundPanelOpen(false); setBusy(true); setError(""); setMessages([]); setReport(null); setStatus("正在按原记录准备重测"); setNarrowView("observe");
     dialog.current?.close();
     let prepared;
@@ -264,7 +307,7 @@ export function VirtualSeniorLiveObserver({ ProductSurface, onClose, onBatch }) 
       </section>
       <section className="live-observation" aria-labelledby="live-observe-title">
         <div className="live-section-heading"><div><h2 id="live-observe-title">小安实时交互</h2><p>{run ? `${run.binding.displayName} · ${run.scenario.title}${run.selection ? ` · 执行 ${run.selection.executionCount} 轮` : ""}` : "开始后，在这里查看实际产品的问答与语音过程"}</p></div><span className={busy ? "is-running" : ""}>{busy ? "运行中" : "只读观察"}</span></div>
-        <div className="live-product-frame" ref={frame} data-run-id={run?.runId || ""}><div className="advisor-shell advisor-screen-conversation live-product-shell">{ProductSurface ? <ProductSurface messages={messages} response={null} onQuestion={() => {}} composerProps={{ voiceState: "idle", draft: "" }} avatarProps={{ listening: voiceStage.stage === "asr" && voiceStage.status === "running", speaking: voiceStage.stage === "answer-playback" && voiceStage.status === "running", preparing: ["question-tts", "answer-tts"].includes(voiceStage.stage) && voiceStage.status === "running", status: busy ? "合成测试 · 本地语音回环" : "合成测试 · 等待开始" }} observationStatus={status} /> : <p>产品观察组件未加载，请从 App 进入。</p>}</div></div>
+        <div className="live-product-frame" ref={frame} data-run-id={run?.runId || ""}><div className="advisor-shell advisor-screen-conversation live-product-shell">{ProductSurface ? <ProductSurface messages={messages} response={null} onQuestion={() => {}} composerProps={{ voiceState: "idle", draft: "" }} avatarProps={{ listening: voiceStage.stage === "asr" && voiceStage.status === "running", speaking: voiceStage.stage === "answer-playback" && voiceStage.status === "running", preparing: ["question-tts", "answer-tts"].includes(voiceStage.stage) && voiceStage.status === "running", visemeTimelineRef: nativeVisemeTimelineRef, status: busy ? "合成测试 · 本地语音回环" : "合成测试 · 等待开始" }} observationStatus={status} /> : <p>产品观察组件未加载，请从 App 进入。</p>}</div></div>
         <div className={`live-observer-note ${reportTone(report)}`}><span><SpeakerHigh /> 必测语音：{busy ? label(voiceStage.status === "running" ? "running" : voiceStage.status) : report ? label(report.acceptance?.status || "blocked") : "等待开始"}<small>麦克风与现场扬声器声学效果需实机另验</small></span>{busy && <button className="live-mobile-stop" onClick={stop}>停止测试</button>}{report && <button onClick={() => setDialogContent({ kind: "report", item: report })}>查看本次结果</button>}</div>
       </section>
     </div>

@@ -7,6 +7,8 @@ function sanitizeMetrics(metrics) {
     if (!/^[a-zA-Z][a-zA-Z0-9_]{0,47}$/.test(key)) continue;
     if (typeof value === "number" && Number.isFinite(value)) output[key] = Math.round(value * 1000) / 1000;
     else if (typeof value === "boolean" || value === null) output[key] = value;
+    else if ((key === "engineRequested" || key === "engineUsed") && /^(vits|qwen3-tts)$/.test(value)) output[key] = value;
+    else if (key === "fallbackReasonCode" && /^QWEN_[A-Z_]{1,40}$/.test(value)) output[key] = value;
     else if (typeof value === "string" && /^(ok|error|cancelled|timeout|local|cloud|cache|none|ready|offline|online)$/.test(value)) output[key] = value;
   }
   return output;

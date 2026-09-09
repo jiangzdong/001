@@ -9,10 +9,13 @@ const require = createRequire(import.meta.url);
 const { createRuntimeTelemetry, sanitizeMetrics } = require("../electron/telemetry.cjs");
 
 test("telemetry rejects health text and keeps numeric timing fields", () => {
-  assert.deepEqual(sanitizeMetrics({ durationMs: 125.6789, ok: true, transcript: "我胸口疼", status: "ok" }), {
+  assert.deepEqual(sanitizeMetrics({ durationMs: 125.6789, ok: true, transcript: "我胸口疼", status: "ok", engineRequested: "qwen3-tts", engineUsed: "vits", fallbackReasonCode: "QWEN_TIMEOUT" }), {
     durationMs: 125.679,
     ok: true,
     status: "ok",
+    engineRequested: "qwen3-tts",
+    engineUsed: "vits",
+    fallbackReasonCode: "QWEN_TIMEOUT",
   });
 });
 

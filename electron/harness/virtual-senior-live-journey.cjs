@@ -33,6 +33,19 @@ const JOURNEY = Object.freeze([
   step("save-replay", "重复提交检查", "请重新提交刚才那份合成草稿，确认不会重复保存。", `${H}.save_risk_assessment_result`, { dependsOn: "save" }),
 ]);
 const FULL_JOURNEY = Object.freeze({ id: "full-journey", title: `完整场景多轮测试（${JOURNEY.length} 轮）`, turnCount: JOURNEY.length, mcpCount: 5, toolCount: 16 });
+const SPOKEN_UNITS = Object.freeze({ mmHg: "毫米汞柱", bpm: "次每分钟", "mmol/L": "毫摩尔每升", "%": "百分比", "°C": "摄氏度", kg: "千克", steps: "步" });
+
+function spokenDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ""));
+  return match ? `${Number(match[1])}年${Number(match[2])}月${Number(match[3])}日` : "日期待核实";
+}
+
+function spokenVital(item) {
+  const name = item.displayName || item.metric;
+  const unit = SPOKEN_UNITS[item.unit] || item.unit || "";
+  const value = item.unit === "%" ? `百分之${item.value}` : `${item.value}${unit}`;
+  return `${name}${value}，记录于${spokenDate(item.observedAt)}`;
+}
 
 function argumentsFor(s, resident, completed, runId) {
   const args = { seniorId: resident.seniorId, orgId: resident.orgId };
@@ -74,7 +87,7 @@ function describeJourney(s, data) {
   if (s.id === "level") return data.level ? `会员等级：${data.level}。权益：${data.benefits.map((item) => item.name).join("、") || "暂无有效权益"}。` : "该合成长者目前不是会员。";
   if (/recharge|consumption/.test(s.id)) return `共 ${data.total} 条记录，本页 ${items.length} 条：${items.map((item) => `${item.recordId}，${item.amount} 元`).join("；")}。`;
   if (s.id === "context") return `合成档案有 ${data.indicatorSummary.evidenceCount} 条体征证据、${data.riskHistory.length} 份历史研判记录。仅测试，不作诊断。`;
-  if (s.id === "vitals") return data.vitalSigns.length ? data.vitalSigns.map((item) => `${item.displayName || item.metric} ${item.value} ${item.unit}（${item.observedAt.slice(0, 10)}）`).join("；") + "。仅合成记录，不作诊断；过期或冲突数据不可当作当前体征。" : "没有可用体征记录，不用默认值填充。";
+  if (s.id === "vitals") return data.vitalSigns.length ? data.vitalSigns.map(spokenVital).join("；") + "。仅合成记录，不作诊断；过期或冲突数据不可当作当前体征。" : "没有可用体征记录，不用默认值填充。";
   if (s.id.startsWith("history")) return `近半年共 ${data.total} 条体征记录，本页 ${data.evidence.length} 条。${data.evidence.slice(0, 2).map((item) => `${item.displayName || item.metric} ${item.value} ${item.unit}（${item.observedAt.slice(0, 10)}）`).join("；")}`;
   if (s.id.startsWith("evaluation")) return `查到 ${data.results.length} 份合成测评。${data.results.map((item) => `${({ functional: "功能", nutrition: "营养", "fall-risk": "跌倒风险", cognition: "认知" })[item.type] || item.type}：${item.score} 分`).join("；")}。不作临床判断。`;
   if (s.id.startsWith("save")) return `${data.replayed ? "重复请求返回同一记录，没有新建记录" : "合成草稿已保存"}，结果编号 ${data.resultId}，关联 ${data.assessment.evidenceIds.length} 条证据。仅限本次测试区。`;
@@ -93,4 +106,4 @@ function coverageFor(turns, events, planned) {
   return { plannedTools: tools.length, calledTools: tools.filter((t) => t.calls).length, successfulTools: tools.filter((t) => t.successes).length, plannedMcp: new Set(tools.map((t) => t.server)).size, calledMcp: new Set(tools.filter((t) => t.calls).map((t) => t.server)).size, totalTurns: planned.length, renderedTurns: turns.filter((t) => t.rendered).length, completedTurns: turns.filter((t) => t.rendered && t.status === "completed").length, blockedTurns: turns.filter((t) => ["denied", "auth_required", "blocked"].includes(t.status)).length, failedTurns: turns.filter((t) => t.status === "failed").length, skippedTurns: turns.filter((t) => t.status === "skipped").length, voicePassedTurns: turns.filter((t) => t.voice?.status === "passed").length, voiceBlockedTurns: turns.filter((t) => t.voice?.status === "blocked").length, voiceFailedTurns: turns.filter((t) => t.voice?.status === "failed").length, tools };
 }
 
-module.exports = { JOURNEY, FULL_JOURNEY, argumentsFor, describeJourney, coverageFor };
+module.exports = { JOURNEY, FULL_JOURNEY, argumentsFor, describeJourney, coverageFor, spokenDate, spokenVital };

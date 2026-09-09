@@ -21,8 +21,15 @@ function assertEvidence(condition, message) {
   if (!condition) throw Object.assign(new Error(message), { code: "QWEN_PILOT_EVIDENCE_INVALID" });
 }
 
-function validatePilotBatches(batches) {
-  assertEvidence(Array.isArray(batches) && batches.length === PILOT_THRESHOLDS.batches, `pilot must retain exactly ${PILOT_THRESHOLDS.batches} batches`);
+function expectedBatchCount(options = {}) {
+  const value = options.expectedBatches ?? PILOT_THRESHOLDS.batches;
+  assertEvidence(Number.isInteger(value) && value > 0, "expected batch count must be a positive integer");
+  return value;
+}
+
+function validatePilotBatches(batches, options = {}) {
+  const expectedBatches = expectedBatchCount(options);
+  assertEvidence(Array.isArray(batches) && batches.length === expectedBatches, `pilot must retain exactly ${expectedBatches} batches`);
   const expectedRounds = new Set(JOURNEY.map((step) => step.id));
   const ids = new Set();
   for (const batch of batches) {
@@ -52,8 +59,9 @@ function validatePilotBatches(batches) {
   return true;
 }
 
-function summarizePilot(batches) {
-  validatePilotBatches(batches);
+function summarizePilot(batches, options = {}) {
+  const expectedBatches = expectedBatchCount(options);
+  validatePilotBatches(batches, { expectedBatches });
   const rows = batches.flatMap((batch) => batch.cases.map((row) => ({ ...row, batchId: batch.batchId })));
   const passed = (row) => row.asrStatus === "passed" && row.criticalTerms?.valid === true;
   const perRound = Object.fromEntries(JOURNEY.map((step) => {
@@ -73,7 +81,7 @@ function summarizePilot(batches) {
     && Object.values(perRound).every((row) => row.passRate >= PILOT_THRESHOLDS.perRoundPassRate)
     && Object.values(criticalDomains).every((row) => row.passRate === PILOT_THRESHOLDS.criticalPassRate);
   return {
-    thresholds: PILOT_THRESHOLDS,
+    thresholds: { ...PILOT_THRESHOLDS, batches: expectedBatches },
     batches: batches.length,
     totalCases: rows.length,
     passedCases,
@@ -82,7 +90,8 @@ function summarizePilot(batches) {
     criticalDomains,
     failures,
     gate: gatePassed ? "passed" : "failed",
-    eligibleForThirtyBatchStabilityRun: gatePassed,
+    eligibleForThirtyBatchStabilityRun: expectedBatches === PILOT_THRESHOLDS.batches && gatePassed,
+    stabilityGate: expectedBatches === 30 ? (gatePassed ? "passed" : "failed") : null,
   };
 }
 

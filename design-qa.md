@@ -1,5 +1,16 @@
 # Design QA
 
+## 2026-09-07 回答语音双引擎设置（前端实现，待 GUI 验收）
+
+- Design Read：面向站点管理员的既有冷白医疗蓝终端设置，沿用当前设置行与子对话框；`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 保留：现有终端设置入口、设置行层级、Phosphor 图标、冷白医疗蓝、完整圆角表面和本机语音默认行为。
+- 增强：新增“回答语音”摘要与子对话框，明确区分已选择和实际使用的引擎；覆盖读取、不可用、待检测、检测中、成功、失败和自动回退。Qwen3-TTS 资源明确缺失或平台不支持时禁用；已安装待检测或上次检测失败时允许选择，只有明确保存才触发异步检测。每次打开设置读取轻量缓存，每轮语音返回的请求/实际引擎和降级结果会同步到摘要，不轮询大型资源。
+- 删除：删除“选择后必然生效”的假成功暗示；不展示开发机路径、环境变量、模型目录或内部错误码；不使用单侧彩色线条表达状态。
+- 重做：仅重排回答语音的两个同类单选项和状态反馈，不改终端设置的信息架构、其它设置项或产品主界面。
+- 自动验证：回答语音、流式截断与运行态锁存专项 36/36 PASS；复现 partial 后轻量刷新仍保留“未完整播放”，只有下一整轮完整成功才清除，且多分段中途成功不会提前清除。最新完整 Node 330 项中 329 PASS、1 SKIP、0 FAIL；Vite 4585 modules transformed，Sites 后处理成功；`git diff --check` PASS。pre-code 验证器此前 PASS；当前没有真实 GUI，pre-delivery 仍为 FAIL。
+- 独立审查 P1：原流式路径在已播放前段后可能把最终 `partial`/错误当作整段成功，且 `speechError` 未进入可见状态。现已将部分播放和整段成功分离：失败即停止当前音频、分析器与口型队列，不触发浏览器从头重复；产品显示“语音未完整播放，请重试”。服务端在起声前完整降级且返回成功时，显示“高质量语音暂时不可用，已切换轻量语音”。新增纯结果判定与界面契约测试覆盖 partial、reset、完整降级和错误态。
+- 当前限制：尚未进行本轮真实 Electron 点击、键盘/Escape、750×1200 窄屏截图、实际 Qwen 资源可用/不可用切换和保存失败注入，因此不提交目标视口、溢出或焦点通过结论，`PRE_DELIVERY_GATE` 保持 FAIL。
+
 ## 2026-09-04 V1.5.23 多轮单人观察（本机文本联调 PASS）
 
 - Design Read：保留方案 1，补齐默认完整旅程及同组件状态/报告。DESIGN_VARIANCE=0、MOTION_INTENSITY=2、VISUAL_DENSITY=6；Taste 对产品工作台降级为适用的改版保护、对比、文案、状态检查与全局内置量表。
@@ -1140,6 +1151,14 @@ final result: passed (accepted-turn terminal response, stricter first-listen arm
 - 未覆盖 Windows 2400×3840、实体触屏、完整键盘焦点顺序与屏幕阅读器；不宣称完整 WCAG 合规或最终生产验收。
 
 final result: conditionally passed (global rule added, visible single-side stroke pattern removed, native Electron flow re-audited); target Windows and assistive-technology validation remain pending
+
+# 2026-09-07 回答语音双引擎设置源码验收
+
+- 现有终端设置内新增“回答语音”，支持 VITS 与 Qwen3-TTS 两个配置项；`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 源码 Electron 最终报告为 PASS：Qwen 24kHz 与 VITS 16kHz 均真实生成并连接系统扬声器播放，请求/实际引擎一致、无降级；重启前保存 Qwen，重启后初始状态恢复为“当前使用 Qwen3-TTS 高质量语音”。
+- 1440×1024 截图检查无横向溢出、console error 或单侧状态线。首轮关闭按钮仅 38.4px，修复为至少 44px 后最终小控件为 0。
+- 证据目录：`QA-EXTERNAL/dual-speech-engine-ui-20260907/source-final/`、`persist-fix-before-restart/`、`persist-fix-after-restart/`。开发 Qwen 资源明确标为 `untrustedDevelopment`；正式签名资源包与独立 V1.5.25 安装包仍未验收。
+- 打包终验补充：正式外置资源为 `release-signed`、23,773 项完整哈希、无符号链接；首轮发现并修复 worker pycache 污染清单问题。最终普通 userData 与重启后报告均 PASS，Qwen 24kHz / VITS 16kHz 均真实扬声器播放且无降级。V1.5.25 本机产品使用门禁通过；未签名公证、DMG、macOS 26.2 以下和跨机器分发保持未验收。
 
 # 2026-09-03 V1.5.18 虚拟长者 M2a 无界面基础
 

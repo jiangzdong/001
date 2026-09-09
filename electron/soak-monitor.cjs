@@ -10,7 +10,7 @@ function evaluateSoakReport({ version, packaged, durationMs, startedAt, finished
   const expectedKioskViewport = { width: 1200, height: 1920, contentRotation: 0 };
   const bounds = display?.bounds || {};
   const displayMatched = bounds.width === expectedKioskViewport.width && bounds.height === expectedKioskViewport.height;
-  const runtimeStable = events.rendererGone === 0 && events.unresponsive === 0 && events.loadError === 0 && samples.length > 0;
+  const runtimeStable = events.rendererGone === 0 && events.unresponsive === 0 && events.loadError === 0 && (events.childProcessGone || 0) === 0 && (events.audioServiceGone || 0) === 0 && samples.length > 0;
   const maxWorkingSetKb = samples.reduce((maximum, sample) => Math.max(maximum, sample.totalWorkingSetKb || 0), 0);
   return {
     ok: Boolean(runtimeStable && displayMatched && speechReady),
@@ -31,15 +31,24 @@ function evaluateSoakReport({ version, packaged, durationMs, startedAt, finished
 function startSoakMonitor({ app, screen, window, speechReady, durationMs, sampleIntervalMs = 15000, onComplete }) {
   const startedAt = new Date().toISOString();
   const samples = [];
-  const events = { rendererGone: 0, unresponsive: 0, loadError: 0 };
+  const events = { rendererGone: 0, unresponsive: 0, loadError: 0, childProcessGone: 0, audioServiceGone: 0, childProcessFailures: [] };
   let finished = false;
   let timeout;
   const onRendererGone = () => { events.rendererGone += 1; };
   const onUnresponsive = () => { events.unresponsive += 1; };
   const onLoadError = () => { events.loadError += 1; };
+  const onChildProcessGone = (_event, details = {}) => {
+    // A renderer listener cannot see Chromium utility-process failures. Audio
+    // service termination is product-visible even when Chromium respawns it.
+    if (details.reason === "clean-exit") return;
+    events.childProcessGone += 1;
+    if (String(details.serviceName || "").includes("audio.mojom.AudioService")) events.audioServiceGone += 1;
+    if (events.childProcessFailures.length < 20) events.childProcessFailures.push({ type: details.type || null, reason: details.reason || null, exitCode: details.exitCode ?? null, serviceName: details.serviceName || null, name: details.name || null });
+  };
   window.webContents.on("render-process-gone", onRendererGone);
   window.webContents.on("unresponsive", onUnresponsive);
   window.webContents.on("did-fail-load", onLoadError);
+  app.on("child-process-gone", onChildProcessGone);
 
   const sample = () => {
     const metrics = app.getAppMetrics();
@@ -60,6 +69,7 @@ function startSoakMonitor({ app, screen, window, speechReady, durationMs, sample
       window.webContents.removeListener("unresponsive", onUnresponsive);
       window.webContents.removeListener("did-fail-load", onLoadError);
     }
+    app.removeListener("child-process-gone", onChildProcessGone);
   };
   const finish = () => {
     if (finished) return;

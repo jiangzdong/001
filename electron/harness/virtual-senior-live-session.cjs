@@ -30,7 +30,7 @@ function describeData(scenario, data) {
   return data.results?.length ? `查到 ${data.results.length} 份合成健康测评，${data.results.filter((item) => item.status === "completed").length} 份已完成。` : "该合成长者没有可用的健康测评记录。";
 }
 
-function createVirtualSeniorLiveSession({ dataset = createCommunityDataset(), onEvent = () => {}, reportRoot = null, ackTimeoutMs = 10000, turnDelayMs = 1600, fixtureFactory = createVirtualSeniorFixtureMcp, harnessFactory = createXiaoanHarness, speech = null, voiceTrialFactory = createVirtualSeniorVoiceTrial } = {}) {
+function createVirtualSeniorLiveSession({ dataset = createCommunityDataset(), onEvent = () => {}, reportRoot = null, ackTimeoutMs = 10000, turnDelayMs = 1600, fixtureFactory = createVirtualSeniorFixtureMcp, harnessFactory = createXiaoanHarness, speech = null, nativeVoicePlayback = null, voiceTrialFactory = createVirtualSeniorVoiceTrial } = {}) {
   const selector = createVirtualSeniorResidentSelection({ dataset });
   const runs = new Map();
   const owners = new Map();
@@ -150,10 +150,15 @@ function createVirtualSeniorLiveSession({ dataset = createCommunityDataset(), on
         speech,
         evidenceMode: "real-local",
         onStage: ({ stage, status, error }) => emit(run, "voice-stage", { stage, status, error: error || null }),
-        playAudio: ({ turnId, stage, samples, sampleRate, visemes, audio }) => render(run, "voice-audio", { turnId, stage, samples, sampleRate, visemes, audio }, {
-          timeoutMs: Math.max(ackTimeoutMs, Math.ceil((audio?.durationMs || 0) + 5000)),
-          recordPayload: { turnId, stage, sampleRate, audio, samplesOmitted: true, visemeCount: Array.isArray(visemes) ? visemes.length : 0 },
-        }),
+        playAudio: ({ turnId, stage, samples, sampleRate, visemes, alignment, audio, signal }) => {
+          const payload = { turnId, stage, samples, sampleRate, visemes, alignment, audio };
+          const recorded = { turnId, stage, sampleRate, audio, samplesOmitted: true, visemeCount: Array.isArray(visemes) ? visemes.length : 0, alignmentProvider: alignment?.provider || null };
+          if (nativeVoicePlayback) {
+            emit(run, "voice-audio", { ...payload, samples: [], nativePlayback: true }, { recordPayload: { ...recorded, nativePlayback: true } });
+            return nativeVoicePlayback({ turnId, stage, samples, sampleRate, audio, signal });
+          }
+          return render(run, "voice-audio", payload, { timeoutMs: Math.max(ackTimeoutMs, Math.ceil((audio?.durationMs || 0) + 5000)), recordPayload: recorded });
+        },
       }) : null;
       const completed = new Map();
       let lastResult;

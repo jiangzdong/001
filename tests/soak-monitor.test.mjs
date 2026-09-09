@@ -17,7 +17,7 @@ test("soak report separates runtime stability from the physical display gate", (
     version: "1.3.0", packaged: true, durationMs: 60000,
     startedAt: "2026-08-28T00:00:00.000Z", finishedAt: "2026-08-28T00:01:00.000Z",
     samples: [{ totalWorkingSetKb: 1024 }, { totalWorkingSetKb: 2048 }],
-    events: { rendererGone: 0, unresponsive: 0, loadError: 0 }, speechReady: true,
+    events: { rendererGone: 0, unresponsive: 0, loadError: 0, childProcessGone: 0, audioServiceGone: 0 }, speechReady: true,
   };
   const target = evaluateSoakReport({ ...base, display: { bounds: { width: 1200, height: 1920 }, rotation: 90 } });
   assert.equal(target.ok, true);
@@ -29,4 +29,8 @@ test("soak report separates runtime stability from the physical display gate", (
   assert.equal(development.ok, false);
   assert.equal(development.gates.runtimeStable, true);
   assert.equal(development.gates.displayMatched, false);
+
+  const audioFailure = evaluateSoakReport({ ...base, events: { ...base.events, childProcessGone: 1, audioServiceGone: 1 }, display: { bounds: { width: 1200, height: 1920 }, rotation: 90 } });
+  assert.equal(audioFailure.ok, false);
+  assert.equal(audioFailure.gates.runtimeStable, false);
 });

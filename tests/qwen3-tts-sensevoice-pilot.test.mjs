@@ -26,6 +26,16 @@ test("Qwen pilot does not permit the 30-batch phase if one strict business round
   assert.equal(result.criticalDomains.identity.passRate, 2 / 3);
 });
 
+test("30-batch stability requires every retained batch and applies the same strict thresholds", () => {
+  const stable = Array.from({ length: 30 }, (_, index) => batch(`batch-${index + 1}`));
+  assert.equal(summarizePilot(stable, { expectedBatches: 30 }).stabilityGate, "passed");
+  stable[29].cases.find((entry) => entry.roundId === "identity").asrStatus = "failed";
+  stable[29].cases.find((entry) => entry.roundId === "identity").error = "strict oracle missing identity term";
+  stable[29].cases.find((entry) => entry.roundId === "identity").criticalTerms = { valid: false, oracle: "fixed-question-critical-terms-v1", missing: ["identity"] };
+  assert.equal(summarizePilot(stable, { expectedBatches: 30 }).stabilityGate, "failed");
+  assert.throws(() => summarizePilot(stable.slice(0, 29), { expectedBatches: 30 }), /exactly 30/);
+});
+
 test("segmentation candidate preserves the exact question and rejects any non-EOS or oracle failure", () => {
   assert.deepEqual(splitQuestionAtExistingPunctuation("还有哪些消费？接着上一页往后看。"), ["还有哪些消费？", "接着上一页往后看。"]);
   assert.throws(() => splitQuestionAtExistingPunctuation(" 还有哪些消费？"), /changed/);

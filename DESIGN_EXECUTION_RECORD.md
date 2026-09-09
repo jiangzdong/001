@@ -1,5 +1,56 @@
 # DESIGN_EXECUTION_RECORD
 
+## 17. 2026-09-07 macOS DeepSeek 密钥安全存储修复（当前窄范围缺陷）
+
+- 已完整读取全局设计规范：是
+- 用户证据：当前打包 App 的“连接 DeepSeek”弹窗在点击“保存并连接”后显示 `Error invoking remote method 'deepseek:save-key': Error: Windows 加密服务暂不可用`；密钥没有写入本机安全存储。
+- 范围判断：只修复既有 DeepSeek 保存、读取、清除和重启恢复的跨平台安全存储逻辑；不新增页面、流程、组件类型、视觉语言或文案布局，符合全局规范 0.3 的窄范围例外。
+- 当前视觉事实源：用户提供的 1129×1132 截图，以及现有 `DeepSeekSetupDialog` 的输入、保存、已配置、清除和错误状态。`DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 当前最小 skill 集：无额外视觉 skill；本轮不编辑 UI，只沿用现有弹窗与状态组件。全局设计规范负责异常恢复、真实运行和交付门禁。
+- 保留：密码输入遮罩、保存后不回显密钥、已配置状态、二次清除和冷白医疗蓝界面。
+- 增强：Electron 42 先尝试异步 `safeStorage`，异步提供方失败时再尝试同步钥匙串；未签名 macOS 本机包仍被钥匙串拒绝时，使用独立随机密钥的 AES-256-GCM 本机加密回退。正式签名包恢复可用后会自动迁回系统安全存储并删除本机回退密钥。
+- 删除：把所有平台错误都写成“Windows 加密服务”的错误归因。
+- 重做：仅主进程的密钥存储适配层，不改变 renderer bridge、产品交互或外部 DeepSeek 请求。
+- 状态与安全：格式错误拒绝；Windows/其他平台安全存储不可用时失败关闭；macOS 回退凭据使用 AES-256-GCM，随机密钥与密文分离并均以 0600 原子写入；内存只缓存当前进程的密钥；读取失败关闭；清除同时清空磁盘、回退密钥和内存；不得记录或回显测试密钥。
+- 验证方式：单元测试覆盖异步保存/读取/重加密、异步失败后的同步回退、未签名 macOS AES-GCM 回退、Windows 不可用失败、原子写入与清除；真实 macOS 打包 App 使用临时假密钥完成保存、成功反馈、关闭重开和已配置状态，不调用生产聊天、不输出密钥。
+- `PRE_CODE_GATE`: PASS
+- 首轮失败证据：`release/secure-key-v1.5.49-final2` 的真实 App 操作中，Windows 误报已消失，但 `encryptStringAsync` 在当前 ad-hoc macOS 包中仍被钥匙串拒绝；该轮没有写入凭据，不计为通过。
+- 核心流程操作证据：`release/secure-key-v1.5.49-final4/mac-arm64/小安站点咨询顾问 V1.5.49.app` 真实打开，正常点击“终端设置 → 智能对话”，输入临时假密钥并点击“保存并连接”；界面显示“连接成功”，退出 App 后重新打开，“终端设置”真实显示“DeepSeek 已配置”。测试凭据和本机回退密钥随后从稳定 `XiaoAnHealthKiosk` userData 精确删除，未残留、未进入源码或包；`app.asar` SHA-256 为 `afc4607e50fca4a3c42a1e0c45abc265df4010f0290a2ce6e0ffea0fb3747983`。
+- 视觉与可用性证据：CUA 当前轮截图已检查初始页、连接成功页和重启后的设置页；现有冷白医疗蓝弹窗、遮罩输入、整体表面状态与返回主界面均保持，无新增单侧描边、横向溢出、遮挡或错误英文堆栈。`DESIGN_VARIANCE=0`。
+- 自动测试与构建：DeepSeek 存储及 Station Advisor 聚焦测试 **32/32 PASS**；完整 Node **343 PASS、0 FAIL、1 个既有 legacy worker SKIP**；Vite **4585 modules transformed**、Sites 后处理 PASS；macOS arm64 目录包成功生成。
+- 发布边界：当前 App 为 ad-hoc、无 Developer ID；官方建议 macOS 使用有效且一致的代码签名以保证钥匙串行为稳定。本轮本机可用性通过，跨机器分发签名/公证仍未验收；未用真实 DeepSeek 密钥发起网络问答，不能据此证明密钥本身额度或接口权限有效。
+- `PRE_DELIVERY_GATE`: PASS
+
+## 16. 2026-09-07 回答语音双引擎设置（当前窄范围增量）
+
+- 已完整读取全局设计规范：是
+- 当前阶段：既有终端设置中的状态补齐与前端实现。
+- Design Read：面向站点管理员的既有冷白医疗蓝终端设置，沿用当前设置行、子对话框、按钮、图标和状态文字，不引入新的视觉语言或组件类型。
+- `DESIGN_VARIANCE=0`、`MOTION_INTENSITY=0`、`VISUAL_DENSITY=0`。
+- 范围判断：在现有“终端设置”弹窗增加“回答语音”设置行，并以现有管理弹窗承载 VITS 与 Qwen3-TTS 两个选项；不新增页面、导航、信息架构、人物资产或动效，符合全局规范 0.3 的窄范围例外，不重做 12 项参考和三方向。
+- 当前视觉事实源：V1.5.24 实际“终端设置”界面、`src/StationAdvisorApp.jsx` 的 `TerminalSettingsDialog` / `McpSetupDialog`、`src/station-advisor.css` 的现有终端设置控件；此前参考仍为 `docs/requirements/station-advisor/screenshots/reference-v1.5.4/source-interface.png`。
+- 当前最小 skill 集：`design-taste-frontend`，已完整读取并仅应用其改版保护、单主题/单色系、按钮与表单可读性、完整交互状态、触控尺寸和窄屏检查；该 skill 明确不负责后台产品界面，本轮产品状态规则以现有设计系统和全局规范为准。
+- 组件与状态：复用 `advisor-terminal-setting` 设置行与 `advisor-exit-dialog` 子对话框；新增当前选择、实际引擎、自动降级摘要，以及加载、可选、不可用、保存中、保存成功、保存失败和自动回退状态。
+- 交互规则：VITS 始终作为轻量默认项；Qwen3-TTS 仅在 Apple Silicon 且资源完整时可选；不可用项必须禁用并显示具体原因，不能点击后假成功；保存失败保留原选择；Escape 在非保存中返回终端设置；关闭始终返回产品；不暴露开发机路径或工程术语堆砌。
+- 无障碍与响应式：所有按钮/选项至少 44px 触控高度；单选使用原生语义；可见 `:focus-visible` 完整轮廓；状态使用图标、文字和完整表面，不只依赖颜色且不使用单侧彩线；窄屏内容可换行、弹窗可纵向滚动且禁止横向溢出。
+- Taste 预审：保留既有冷白医疗蓝、圆角尺度、Phosphor 图标与设置行层级；增强实际引擎、不可用原因和回退反馈；删除任何“已选择即已生效”的假成功暗示；重做仅限回答语音子对话框的状态编排，不重做设置页。
+- 验证方式：前端静态契约测试覆盖两选项、不可用态、保存/成功/失败/回退文案和 bridge 缺失兼容；运行相关及完整 Node 测试、Vite 构建和 `--gate pre-code`。源码 Electron 已在独立用户目录完成设置、真实双向生成/扬声器播放与重启恢复；正式签名资源包和独立安装包仍是后续产品门禁。
+- 独立审查 P1 修复：流式语音即使已播放部分分块，只要最终返回 `partial`、`reset` 或流错误，立即停止当前 AudioBuffer、清除分析器和口型时间线，整轮返回未完成；已播内容禁止再由浏览器语音从头重复。若服务端在任何音频开始前完整降级到 VITS，则保留成功并显示“已切换轻量语音”；若音频已开始后失败，则产品停留在错误态并显示“语音未完整播放，请重试”。
+- P1 状态覆盖：正常完整播放、Qwen 启动前降级 VITS、播放后 partial、reset 指向 VITS、流异常、用户取消及下一轮清理；兼容 `engineRequested`、`engineUsed`、`fallbackReason`，但用户界面不显示内部错误或开发机路径。
+- 二审 P1 状态同步：每次打开终端设置及回答语音子对话框都只读取后端轻量缓存；每轮语音结果返回后，将请求引擎、实际引擎、降级、回退原因和未完整播放状态立即合并到本地摘要，出现降级/截断时再读取一次轻量缓存，不轮询或扫描高质量资源。Qwen 明确未安装或平台不支持时禁用；已安装但待检测、上次检测失败时允许重新选择，只有用户明确保存 Qwen 才显示“正在检测高质量语音资源”并等待后端异步检测结果。
+- 三审 P1 状态锁存：接入 preload 的轻量 `speechRuntimeState()`；前端对一次回答的未完整、降级和回退状态进行锁存，随后读取不带运行字段的轻量配置也不会清除。只有整轮回答实际完整播放，或用户在回答语音设置中成功保存并确认新配置，才解除旧运行状态；多分段回答不能因中途一个分段成功而提前清除。
+- 明确反例：不嵌入 2.7GB 模型、不显示本机绝对路径、不允许禁用项触发保存、不使用单侧线条强调、不把接口存在等同于引擎可用。
+- `PRE_CODE_GATE`: PASS
+- 通过证据：本轮满足窄范围例外；现有视觉与组件事实源明确，复用设置行和子对话框，不新增页面、流程、视觉语言或组件类型；状态、触控、焦点、响应式与验证方式已定义。
+- 源码 GUI 证据：`QA-EXTERNAL/dual-speech-engine-ui-20260907/source-final/dual-speech-engine-ui-report.json`、`persist-fix-before-restart/dual-speech-engine-ui-report.json` 与 `persist-fix-after-restart/dual-speech-engine-ui-report.json` 均为 PASS。Qwen 实际输出 101,760 个 24kHz 样本，VITS 实际输出 47,737–49,179 个 16kHz 样本，均经 AudioContext 连接系统扬声器并等待播放结束；请求引擎与实际引擎一致、无降级、console error 0、横向溢出 0、小于 44px 控件 0。重启前保存 Qwen，重启后初始设置真实显示“当前使用 Qwen3-TTS 高质量语音”。
+- 视觉审查：截图 `01-answer-voice-settings.png`、`02-qwen-selected.png`、`03-vits-restored.png` 保持既有冷白医疗蓝、两项单选、完整表面状态和单一主操作；未新增单侧状态线或第二套视觉语言。首轮发现关闭按钮 38.4px，已修复为至少 44px 并在最终报告复验为 0 项违规。
+- 自动化与代码审查：指定 2.7GB 真实 legacy worker 环境完整 Node **330/330 PASS、0 skipped**；第四轮独立审查 `P0=0、P1=0`。开发资源明确为 `untrustedDevelopment`，本证据不冒充正式签名资源包或安装包验收。
+- 回退：现有远端功能提交 `7e3c866`、验收提交 `3a673cb` 与标签 `backup-v1.5.24-live-voice-20260906` 均未覆盖；当前改动尚未提交或推送。
+- `PRE_DELIVERY_GATE`: PASS
+- 门禁范围：仅源码 Electron 的设置、真实双向生成/本机扬声器播放、重启持久化和视觉范围；独立 V1.5.25 安装包与正式签名便携 Qwen 资源包仍未验收，不能宣称产品总体验收完成。
+- V1.5.25 打包补充：最终独立 App 与 `release-signed` 外置资源已在普通 userData 完成双向实际播放；重启后初始后端状态为 Qwen、`restoredQwen=true`、`untrustedDevelopment=false`，随后 Qwen 24kHz 再次播放并可切回 VITS 16kHz。报告为 `QA-EXTERNAL/dual-speech-engine-ui-20260907/packaged-signed-resource-restart-final/dual-speech-engine-ui-report.json` 和 `normal-userdata-installed-final/dual-speech-engine-ui-report.json`，均 PASS。
+- 打包产物与边界：`release/dual-speech-v1.5.25/mac-arm64/小安站点咨询顾问 V1.5.25.app`，`app.asar` SHA-256 `4c5d227cead6881f1cf521ac109849b221e20cadc60fa429e29b6b5af92bde09`。本机产品使用门禁通过；Developer ID/公证/DMG、macOS 26.2 以下和跨机器发布不在本轮 PASS 范围。
+
 ## 15. 2026-09-04 双屏扩展屏全屏落位（当前窄范围修复）
 
 - 已完整读取全局设计规范：是

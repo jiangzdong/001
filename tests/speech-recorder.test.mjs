@@ -80,7 +80,7 @@ function createMediaHarness({ state = "running", resume, failProcessorCreation =
     }
     createGain() { return sink; }
   }
-  return { AudioContext: FakeAudioContext, metrics, processor, stream };
+  return { AudioContext: FakeAudioContext, metrics, processor, sink, stream };
 }
 
 function installRecordingEnvironment(t, harness, AudioContextClass = harness.AudioContext) {
@@ -266,6 +266,7 @@ test("normal recording still captures speech and performs the same final cleanup
   assert.equal(speechStarts, 1);
   assert.ok(result.samples.length > 0);
   assert.deepEqual(harness.metrics.disconnects, { processor: 1, sink: 1, source: 1 });
+  assert.equal(harness.sink.gain.value, 0);
   assert.equal(harness.metrics.closeCalls, 1);
   assert.deepEqual(harness.metrics.trackStops, [1, 1]);
   assert.equal(abort.listenerCount(), 0);

@@ -21,7 +21,7 @@ function audioEvidence(result) {
   }
   const rms = Math.sqrt(power / samples.length);
   if (rms < 0.001 || peak < 0.01) throw issue("VOICE_AUDIO_SILENT", "合成音频为空或近似静音", "failed");
-  return { samples, metadata: { sampleRate: rate, samples: samples.length, durationMs: samples.length / rate * 1000, rms, peak, sha256: crypto.createHash("sha256").update(Buffer.from(samples.buffer)).digest("hex") } };
+  return { samples, metadata: { sampleRate: rate, samples: samples.length, durationMs: samples.length / rate * 1000, rms, peak, sha256: crypto.createHash("sha256").update(Buffer.from(samples.buffer)).digest("hex"), engineRequested: result.engineRequested || null, engineUsed: result.engineUsed || null, degraded: Boolean(result.degraded), fallbackReason: result.fallbackReason || null, resourceVersion: result.resourceVersion || null } };
 }
 
 // Production synthesize() truncates at 500 characters; split instead of
@@ -30,37 +30,41 @@ function speechSegments(text) {
   if (typeof text !== "string" || !text.trim() || text.length > 6000) throw issue("VOICE_TEXT_INVALID", "播报内容为空或过长", "failed");
   const segments = [];
   let rest = text;
-  while (rest.length > 420) {
-    let cut = rest.slice(0, 420).search(/[。！？；\n][^。！？；\n]*$/);
-    cut = cut >= 100 ? cut + 1 : 420;
+  while (rest.length > 28) {
+    const window = rest.slice(0, 28);
+    const matches = [...window.matchAll(/[，。！？；\n]/g)];
+    const natural = matches.map((match) => match.index + 1).find((index) => index >= 8);
+    const cut = natural || 28;
     segments.push(rest.slice(0, cut)); rest = rest.slice(cut);
   }
   if (rest) segments.push(rest);
   return segments;
 }
 
-function createVirtualSeniorVoiceTrial({ speech, playAudio, onStage = () => {}, timeoutMs = 65000, evidenceMode = "real-local" } = {}) {
+function createVirtualSeniorVoiceTrial({ speech, playAudio, onStage = () => {}, timeoutMs = 65000, qwenTtsTimeoutMs = 125000, evidenceMode = "real-local" } = {}) {
   if (!["real-local", "unit-test"].includes(evidenceMode)) throw new TypeError("Invalid speech evidence mode");
   async function runRound({ roundId, question, speechPace = "medium", turnId, signal, respond } = {}) {
-    const report = { required: true, mode: "synthetic-speech-loopback", evidenceMode, status: "running", maxCer: 0.25, microphone: "not-verified", acousticOutput: "not-verified", stages: Object.fromEntries(STAGES.map((id) => [id, { status: "not-run" }])) };
+    const report = { required: true, mode: "synthetic-speech-loopback", evidenceMode, status: "running", maxCer: 0.25, microphone: "not-verified", acousticOutput: "not-verified", speechEngine: { requested: null, used: null, fallbackReason: null, resourceVersion: null }, stages: Object.fromEntries(STAGES.map((id) => [id, { status: "not-run" }])) };
     let current = "question-tts";
+    const requestedAtStart = speech?.status?.().requested || null;
+    const strictQwen = requestedAtStart === "qwen3-tts";
     let active = true;
     const guard = () => { if (signal?.aborted || !active) throw issue("CANCELLED", "语音测试已停止", "cancelled"); };
-    const wait = (operation) => new Promise((resolve, reject) => {
+    const wait = (operation, operationTimeoutMs = timeoutMs) => new Promise((resolve, reject) => {
       let timer;
       const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
       const abort = () => { active = false; cleanup(); reject(issue("CANCELLED", "语音测试已停止", "cancelled")); };
       signal?.addEventListener("abort", abort, { once: true });
       if (signal?.aborted) return abort();
-      timer = setTimeout(() => { active = false; cleanup(); reject(issue("VOICE_STAGE_TIMEOUT", "语音环节超时，不能记为通过")); }, timeoutMs);
+      timer = setTimeout(() => { active = false; cleanup(); reject(issue("VOICE_STAGE_TIMEOUT", "语音环节超时，不能记为通过")); }, operationTimeoutMs);
       Promise.resolve().then(() => { guard(); return operation(); }).then((value) => { cleanup(); resolve(value); }, (error) => { cleanup(); reject(error); });
     });
-    const stage = async (id, action) => {
+    const stage = async (id, action, operationTimeoutMs = timeoutMs) => {
       guard(); current = id;
       const start = performance.now();
       report.stages[id] = { ...report.stages[id], status: "running" };
       onStage({ stage: id, status: "running" });
-      const result = await wait(action);
+      const result = await wait(action, operationTimeoutMs);
       guard();
       report.stages[id] = { ...report.stages[id], status: "passed", durationMs: (report.stages[id].durationMs || 0) + performance.now() - start };
       onStage({ stage: id, status: "passed" });
@@ -68,13 +72,23 @@ function createVirtualSeniorVoiceTrial({ speech, playAudio, onStage = () => {}, 
     };
     const play = async (id, pcm, synthesized) => stage(id, async () => {
       const started = performance.now();
-      const receipt = await playAudio({ turnId, stage: id, samples: pcm.samples, sampleRate: pcm.metadata.sampleRate, visemes: synthesized.visemes, audio: pcm.metadata, signal });
+      const receipt = await playAudio({ turnId, stage: id, samples: pcm.samples, sampleRate: pcm.metadata.sampleRate, visemes: synthesized.visemes, alignment: synthesized.alignment || null, audio: pcm.metadata, signal });
       guard();
       const elapsed = performance.now() - started;
       if (!receipt?.ended || receipt.contextState !== "running" || receipt.muted !== false || !Number.isFinite(receipt.playedMs) || receipt.playedMs < pcm.metadata.durationMs * 0.9 || (evidenceMode === "real-local" && elapsed < pcm.metadata.durationMs * 0.9)) throw issue("VOICE_PLAYBACK_UNCONFIRMED", "音频未完成实际播放，或输出处于静音/暂停状态");
       const clips = report.stages[id].clips || [];
       report.stages[id].clips = [...clips, { ...pcm.metadata, playedMs: receipt.playedMs, elapsedMs: elapsed, ended: true, contextState: receipt.contextState }];
     });
+    const ensureVisemes = async (text, synthesized, pcm) => {
+      if (Array.isArray(synthesized?.visemes) && synthesized.visemes.length) return;
+      if (typeof speech?.align !== "function") return;
+      const aligned = await speech.align({ text, samples: pcm.samples, sampleRate: pcm.metadata.sampleRate, turnId });
+      guard();
+      if (aligned?.ok && Array.isArray(aligned.visemes) && aligned.visemes.length) {
+        synthesized.visemes = aligned.visemes;
+        synthesized.alignment = aligned.alignment || null;
+      }
+    };
     try {
       guard();
       if (!speech || !speech.status?.().ready || typeof speech.synthesize !== "function" || typeof speech.recognize !== "function") throw issue("VOICE_MODELS_UNAVAILABLE", "本地语音模型不可用；本次语音测试受阻，不降级为文字通过");
@@ -84,8 +98,11 @@ function createVirtualSeniorVoiceTrial({ speech, playAudio, onStage = () => {}, 
       const speed = ({ slow: 0.85, medium: 1, fast: 1.15 })[speechPace] || 1;
       let synthesized, input;
       await stage("question-tts", async () => {
-        synthesized = await speech.synthesize({ text: question, speed, voiceId: "zh-ll-2", turnId });
+        synthesized = await speech.synthesize({ text: question, speed, voiceId: "zh-ll-2", turnId, mode: strictQwen ? "virtual-senior-strict" : undefined });
         guard(); input = audioEvidence(synthesized);
+        await ensureVisemes(question, synthesized, input);
+        report.speechEngine = { requested: input.metadata.engineRequested, used: input.metadata.engineUsed, degraded: input.metadata.degraded, fallbackReason: input.metadata.fallbackReason, resourceVersion: input.metadata.resourceVersion };
+        if (evidenceMode === "real-local" && (!report.speechEngine.requested || report.speechEngine.requested !== requestedAtStart || report.speechEngine.used !== requestedAtStart || report.speechEngine.degraded || report.speechEngine.fallbackReason || (strictQwen && (report.speechEngine.requested !== "qwen3-tts" || report.speechEngine.used !== "qwen3-tts")))) throw issue("VOICE_ENGINE_EVIDENCE_INVALID", "语音引擎证据缺失、不一致或发生回退，不能记为通过", "failed");
         report.stages["question-tts"].audio = input.metadata;
       });
       await play("question-playback", input, synthesized);
@@ -114,10 +131,12 @@ function createVirtualSeniorVoiceTrial({ speech, playAudio, onStage = () => {}, 
       for (const text of segments) {
         let output, pcm;
         await stage("answer-tts", async () => {
-          output = await speech.synthesize({ text, speed: 1, voiceId: "zh-ll-2", turnId });
+          output = await speech.synthesize({ text, speed: 1, voiceId: "zh-ll-2", turnId, mode: strictQwen ? "virtual-senior-strict" : undefined });
           guard(); pcm = audioEvidence(output);
+          await ensureVisemes(text, output, pcm);
+          if (evidenceMode === "real-local" && (pcm.metadata.engineRequested !== report.speechEngine.requested || pcm.metadata.engineUsed !== report.speechEngine.used || pcm.metadata.degraded || pcm.metadata.fallbackReason)) throw issue("VOICE_ENGINE_EVIDENCE_INVALID", "回答播报引擎与问题播报不一致或发生回退", "failed");
           report.stages["answer-tts"].clips = [...(report.stages["answer-tts"].clips || []), { ...pcm.metadata, characters: text.length }];
-        });
+        }, strictQwen ? Math.max(timeoutMs, qwenTtsTimeoutMs) : timeoutMs);
         await play("answer-playback", pcm, output);
       }
       report.status = "passed";

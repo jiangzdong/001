@@ -4,6 +4,8 @@ const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const { createSpeechService } = require("./speech-service.cjs");
+const { createDeepSeekCredentialStore } = require("./deepseek-credential-store.cjs");
+const { createNativeAudioPlayer } = require("./native-audio-playback.cjs");
 const { createAvatarService } = require("./avatar-service.cjs");
 const { createSkillLoader } = require("./skill-loader.cjs");
 const { normalizeDeepSeekChatResult } = require("./deepseek-stream.cjs");
@@ -62,12 +64,15 @@ let virtualSeniorControlWindow;
 let virtualSeniorInitialization;
 let virtualSeniorLive;
 let speechService;
+let deepSeekCredentialStore;
+const nativeVoicePlayback = createNativeAudioPlayer();
 const liveOwners = new Map();
 function liveFor(event) {
   if (!virtualSeniorEnabled) throw new Error("请先启动隔离测试模式");
   virtualSeniorLive ||= createVirtualSeniorLiveSession({
     reportRoot: path.join(app.getPath("userData"), "virtual-senior-live-reports"),
     speech: speechService,
+    nativeVoicePlayback,
     onEvent: (owner, value) => { const sender = liveOwners.get(owner); if (sender && !sender.isDestroyed()) sender.send("virtual-senior:live-event", value); },
   });
   const sender = event.sender;
@@ -294,21 +299,13 @@ function readPcm16Wave(filename) {
 }
 
 function credentialPath() { return path.join(app.getPath("userData"), "deepseek.credential"); }
-function saveDeepSeekKey(key) {
-  const clean = String(key || "").trim();
-  if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(clean)) throw new Error("密钥格式不正确");
-  if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows 加密服务暂不可用");
-  fs.mkdirSync(app.getPath("userData"), { recursive: true });
-  fs.writeFileSync(credentialPath(), safeStorage.encryptString(clean), { mode: 0o600 });
-}
+async function saveDeepSeekKey(key) { return deepSeekCredentialStore.save(key); }
 function loadDeepSeekKey() {
-  if (process.env.DEEPSEEK_API_KEY) return process.env.DEEPSEEK_API_KEY.trim();
-  if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(credentialPath())) return "";
-  try { return safeStorage.decryptString(fs.readFileSync(credentialPath())); } catch { return ""; }
+  return deepSeekCredentialStore?.load() || String(process.env.DEEPSEEK_API_KEY || "").trim();
 }
-function provisionDeepSeekKeyFromEnvironment() {
+async function provisionDeepSeekKeyFromEnvironment() {
   const key = process.env.DEEPSEEK_API_KEY?.trim();
-  if (key && !fs.existsSync(credentialPath())) saveDeepSeekKey(key);
+  if (key && !fs.existsSync(credentialPath())) await saveDeepSeekKey(key);
 }
 
 function prepareDeepSeekChat(payload) {
@@ -610,8 +607,18 @@ function createVirtualSeniorControlWindow() {
 
 app.whenReady().then(async () => {
   migrateLegacyUserData();
-  provisionDeepSeekKeyFromEnvironment();
-  const speech = speechService = createSpeechService({ app });
+  deepSeekCredentialStore = createDeepSeekCredentialStore({ filePath: credentialPath(), safeStorage });
+  await deepSeekCredentialStore.initialize();
+  await provisionDeepSeekKeyFromEnvironment();
+  const qwenDevelopmentRoot = !app.isPackaged ? String(process.env.QWEN3_TTS_DEV_ROOT || "").trim() : "";
+  const qwenDevelopmentResource = qwenDevelopmentRoot ? {
+    resourceVersion: "local-development-untrusted",
+    pythonPath: path.join(qwenDevelopmentRoot, ".venv-qwen3-tts", "bin", "python3"),
+    workerPath: path.join(qwenDevelopmentRoot, "scripts", "qwen3_tts_worker.py"),
+    modelPath: path.join(qwenDevelopmentRoot, "models", "Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit"),
+  } : null;
+  const speech = speechService = createSpeechService({ app, qwenDevelopmentResource, systemVersion: process.getSystemVersion() });
+  if (speech.engineStatus().requested === "qwen3-tts") void speech.refreshEngineStatus();
   const avatar = createAvatarService({ cacheDir: path.join(app.getPath("userData"), "avatar-video-cache") });
   runtimeTelemetry = createRuntimeTelemetry({ directory: path.join(app.getPath("userData"), "telemetry") });
   try {
@@ -706,6 +713,13 @@ app.whenReady().then(async () => {
     }
   }
   ipcMain.handle("speech:status", () => speech.status());
+  // Settings/status reads must stay instantaneous. Resource verification is
+  // performed at startup and only repeated by the explicit validation/save
+  // paths below; opening a dialog must never hash a multi-gigabyte pack.
+  ipcMain.handle("speech:engine-status", () => speech.engineStatus());
+  ipcMain.handle("speech:runtime-state", () => speech.engineStatus());
+  ipcMain.handle("speech:validate-engine", (_event, engine) => engine === "qwen3-tts" ? speech.refreshEngineStatus() : speech.engineStatus());
+  ipcMain.handle("speech:set-engine", (_event, engine) => speech.setEngine(engine));
   ipcMain.handle("speech:recognize", async (_event, payload) => {
     const started = performance.now();
     const result = await speech.recognize(payload || {});
@@ -716,7 +730,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("speech:synthesize", async (_event, payload) => {
     const started = performance.now();
     const result = await speech.synthesize(payload || {});
-    runtimeTelemetry.record("tts", result?.ok ? "complete" : result?.cancelled ? "cancelled" : "error", { durationMs: performance.now() - started, ok: Boolean(result?.ok), cancelled: Boolean(result?.cancelled) });
+    runtimeTelemetry.record("tts", result?.ok ? "complete" : result?.cancelled ? "cancelled" : "error", { durationMs: performance.now() - started, ok: Boolean(result?.ok), cancelled: Boolean(result?.cancelled), engineRequested: result?.engineRequested || null, engineUsed: result?.engineUsed || null, fallback: Boolean(result?.fallbackReason), fallbackReasonCode: String(result?.fallbackReason || "").split(":", 1)[0] || null });
     return result;
   });
   ipcMain.handle("speech:synthesize-stream", async (event, payload) => {
@@ -726,12 +740,17 @@ app.whenReady().then(async () => {
     const result = await speech.synthesizeStream(payload || {}, (chunk) => {
       if (!event.sender.isDestroyed()) event.sender.send("speech:stream-event", { type: "chunk", turnId, streamId, ...chunk });
     });
+    if ((result?.partial || result?.reset) && !event.sender.isDestroyed()) event.sender.send("speech:stream-event", { type: "reset", reset: true, turnId, streamId, engineRequested: result.engineRequested || null, engineUsed: result.engineUsed || null, fallbackReason: result.fallbackReason || null, message: result.message || "语音流未完整结束" });
     runtimeTelemetry.record("tts", result?.ok ? "stream_complete" : result?.cancelled ? "stream_cancelled" : "stream_error", {
       durationMs: performance.now() - started,
       firstChunkMs: Number(result?.firstChunkMs) || 0,
       chunkCount: Number(result?.chunkCount) || 0,
       ok: Boolean(result?.ok),
       cancelled: Boolean(result?.cancelled),
+      engineRequested: result?.engineRequested || null,
+      engineUsed: result?.engineUsed || null,
+      fallback: Boolean(result?.fallbackReason),
+      fallbackReasonCode: String(result?.fallbackReason || "").split(":", 1)[0] || null,
     });
     return result;
   });
@@ -778,8 +797,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("avatar:cancel", (_event, turnId) => ({ ok: true, cancelled: avatar.cancelTurn(turnId) }));
   ipcMain.handle("deepseek:status", () => ({ configured: Boolean(loadDeepSeekKey()) }));
-  ipcMain.handle("deepseek:save-key", (_event, key) => { saveDeepSeekKey(key); return { ok: true }; });
-  ipcMain.handle("deepseek:clear-key", () => { if (fs.existsSync(credentialPath())) fs.rmSync(credentialPath()); return { ok: true }; });
+  ipcMain.handle("deepseek:save-key", async (_event, key) => saveDeepSeekKey(key));
+  ipcMain.handle("deepseek:clear-key", () => deepSeekCredentialStore.clear());
   ipcMain.handle("deepseek:chat", (_event, payload) => deepSeekChat(payload || {}));
   ipcMain.handle("deepseek:chat-stream", async (event, payload) => {
     const result = await deepSeekChatStream(event.sender, payload || {});

@@ -5,15 +5,16 @@ import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createVirtualSeniorVoiceTrial, speechSegments } = require("../electron/harness/virtual-senior-voice-trial.cjs");
+const { spokenVital } = require("../electron/harness/virtual-senior-live-journey.cjs");
 const { REAL_ASR_PROVIDER } = require("../electron/harness/virtual-senior-asr-gate.cjs");
 const { validateRoundTranscript } = require("../electron/harness/virtual-senior-voice-oracle.cjs");
 const { manifestPayloadSha256, validateFixtureManifest } = require("../electron/harness/virtual-senior-voice-regression.cjs");
 const question = "最新健康体征，是什么时候记录的？";
-const pcm = () => ({ ok: true, samples: Float32Array.from({ length: 1600 }, (_, i) => Math.sin(i / 8) * 0.1), sampleRate: 16000 });
+const pcm = () => ({ ok: true, samples: Float32Array.from({ length: 1600 }, (_, i) => Math.sin(i / 8) * 0.1), sampleRate: 16000, engineRequested: "vits", engineUsed: "vits", fallbackReason: null, resourceVersion: null });
 const receipt = ({ audio }) => ({ ended: true, contextState: "running", muted: false, playedMs: audio.durationMs });
 function fixture(overrides = {}) {
   const calls = [];
-  const speech = { status: () => ({ ready: true }), synthesize: async (input) => { calls.push(["tts", input]); return pcm(); }, recognize: async () => ({ ok: true, text: question.slice(0, -1), provider: REAL_ASR_PROVIDER, trustedFinal: true }), cancelTurn: (id) => calls.push(["cancel", id]), ...overrides };
+  const speech = { status: () => ({ ready: true, requested: "vits" }), synthesize: async (input) => { calls.push(["tts", input]); return pcm(); }, recognize: async () => ({ ok: true, text: question.slice(0, -1), provider: REAL_ASR_PROVIDER, trustedFinal: true }), cancelTurn: (id) => calls.push(["cancel", id]), ...overrides };
   return { speech, calls };
 }
 const input = (extra = {}) => ({ roundId: "vitals", question, turnId: "unit-voice-1", respond: async (text) => ({ answer: { speechText: "这是一条合成回复。" }, recognizedInput: text }), ...extra });
@@ -59,6 +60,21 @@ test("mandatory voice trial uses actual recognized text and records each stage, 
   assert.ok(JSON.stringify(report).length < 5000);
 });
 
+test("speech alignment evidence is forwarded to the actual playback boundary", async () => {
+  const { speech } = fixture({
+    synthesize: async () => ({ ...pcm(), visemes: [{ atMs: 0, shape: "A" }], alignment: { provider: "sensevoice-character-timestamps" } }),
+  });
+  const observed = [];
+  const report = await createVirtualSeniorVoiceTrial({
+    speech,
+    evidenceMode: "unit-test",
+    playAudio: (payload) => { observed.push(payload); return receipt(payload); },
+  }).runRound(input());
+  assert.equal(report.status, "passed");
+  assert.equal(observed.length, 2);
+  assert.ok(observed.every((payload) => payload.alignment?.provider === "sensevoice-character-timestamps"));
+});
+
 for (const [name, options, code, status] of [
   ["missing models", { status: () => ({ ready: false }) }, "VOICE_MODELS_UNAVAILABLE", "blocked"],
   ["failed TTS", { synthesize: async () => ({ ok: false, message: "模型失败" }) }, "VOICE_SYNTHESIS_UNAVAILABLE", "blocked"],
@@ -92,6 +108,22 @@ test("real evidence rejects instantaneous playback receipts", async () => {
   assert.equal(report.status, "blocked");
 });
 
+test("real evidence persists engine identity and rejects any fallback", async () => {
+  const { speech } = fixture({ status: () => ({ ready: true, requested: "qwen3-tts" }), synthesize: async () => ({ ...pcm(), engineRequested: "qwen3-tts", engineUsed: "vits", fallbackReason: "Qwen failed" }) });
+  const report = await createVirtualSeniorVoiceTrial({ speech, playAudio: receipt }).runRound(input());
+  assert.equal(report.status, "failed");
+  assert.equal(report.error.code, "VOICE_ENGINE_EVIDENCE_INVALID");
+  assert.deepEqual(report.speechEngine, { requested: "qwen3-tts", used: "vits", degraded: false, fallbackReason: "Qwen failed", resourceVersion: null });
+});
+
+test("real strict Qwen evidence requires requested and used Qwen with no degradation", async () => {
+  const { speech, calls } = fixture({ status: () => ({ ready: true, requested: "qwen3-tts" }), synthesize: async (value) => { calls.push(["tts", value]); return { ...pcm(), engineRequested: "qwen3-tts", engineUsed: "qwen3-tts", resourceVersion: "signed-1" }; } });
+  const report = await createVirtualSeniorVoiceTrial({ speech, playAudio: async ({ audio }) => { await new Promise((resolve) => setTimeout(resolve, audio.durationMs)); return receipt({ audio }); } }).runRound(input());
+  assert.equal(report.status, "passed");
+  assert.deepEqual(report.speechEngine, { requested: "qwen3-tts", used: "qwen3-tts", degraded: false, fallbackReason: null, resourceVersion: "signed-1" });
+  assert.ok(calls.filter(([kind]) => kind === "tts").every(([, value]) => value.mode === "virtual-senior-strict"));
+});
+
 test("long answers are fully synthesized and played in bounded segments without truncation", async () => {
   const { speech, calls } = fixture();
   const answer = "合成健康记录，不作诊断。".repeat(110);
@@ -99,9 +131,40 @@ test("long answers are fully synthesized and played in bounded segments without 
   assert.equal(report.status, "passed");
   const texts = calls.filter(([kind]) => kind === "tts").slice(1).map(([, value]) => value.text);
   assert.equal(texts.join(""), answer);
-  assert.ok(texts.every((text) => text.length <= 420));
+  assert.ok(texts.every((text) => text.length <= 28));
   assert.equal(report.stages["answer-playback"].clips.length, texts.length);
   assert.equal(speechSegments(answer).join(""), answer);
+});
+
+test("a commercial-length health answer is split before Qwen token exhaustion", () => {
+  const answer = "收缩压 137 mmHg（2026-09-03）；舒张压 83 mmHg（2026-09-03）；心率 84 bpm（2026-09-03）；血糖 7.2 mmol/L（2026-09-03）；血氧 97 %（2026-09-03）；体温 37.3 °C（2026-09-03）；体重 72.7 kg（2026-09-03）；步数 5653 steps（2026-09-03）。仅合成记录，不作诊断；过期或冲突数据不可当作当前体征。";
+  const segments = speechSegments(answer);
+  assert.equal(segments.join(""), answer);
+  assert.ok(segments.length >= 2);
+  assert.ok(segments.every((text) => text.length <= 28));
+});
+
+test("health values are rendered as natural Chinese speech instead of symbol-heavy model input", () => {
+  assert.equal(spokenVital({ displayName: "血糖", value: "7.2", unit: "mmol/L", observedAt: "2026-09-03T00:00:00.000Z" }), "血糖7.2毫摩尔每升，记录于2026年9月3日");
+  assert.equal(spokenVital({ displayName: "血氧", value: "97", unit: "%", observedAt: "2026-09-03T00:00:00.000Z" }), "血氧百分之97，记录于2026年9月3日");
+});
+
+test("speech without native visemes is aligned before actual playback", async () => {
+  let aligned = 0;
+  let received = null;
+  const { speech } = fixture({
+    align: async ({ text, samples, sampleRate }) => {
+      aligned += 1;
+      assert.ok(text.length > 0);
+      assert.ok(samples.length > 0);
+      assert.equal(sampleRate, 16000);
+      return { ok: true, visemes: [{ timeMs: 0, shape: "A" }, { timeMs: 80, shape: "CLOSED" }], alignment: { provider: "sensevoice-character-timestamps" } };
+    },
+  });
+  const report = await createVirtualSeniorVoiceTrial({ speech, evidenceMode: "unit-test", playAudio: async ({ visemes, audio }) => { received = visemes; return receipt({ audio }); } }).runRound(input());
+  assert.equal(report.status, "passed");
+  assert.ok(aligned >= 2);
+  assert.deepEqual(received, [{ timeMs: 0, shape: "A" }, { timeMs: 80, shape: "CLOSED" }]);
 });
 
 test("cancel returns promptly during ASR and ignores its late result", async () => {
@@ -121,6 +184,21 @@ test("a hanging stage times out rather than being skipped", async () => {
   const report = await createVirtualSeniorVoiceTrial({ speech, playAudio: receipt, evidenceMode: "unit-test", timeoutMs: 25 }).runRound(input());
   assert.equal(report.status, "blocked");
   assert.equal(report.error.code, "VOICE_STAGE_TIMEOUT");
+});
+
+test("strict Qwen answer synthesis uses its bounded provider-aligned timeout", async () => {
+  let calls = 0;
+  const { speech } = fixture({
+    status: () => ({ ready: true, requested: "qwen3-tts" }),
+    synthesize: async () => {
+      calls++;
+      if (calls === 2) await new Promise((resolve) => setTimeout(resolve, 35));
+      return { ...pcm(), engineRequested: "qwen3-tts", engineUsed: "qwen3-tts", resourceVersion: "signed-1" };
+    },
+  });
+  const report = await createVirtualSeniorVoiceTrial({ speech, playAudio: receipt, evidenceMode: "unit-test", timeoutMs: 20, qwenTtsTimeoutMs: 60 }).runRound(input());
+  assert.equal(report.status, "passed");
+  assert.equal(report.stages["answer-tts"].clips.length, 1);
 });
 
 test("late synthesis cannot mutate a timed-out report", async () => {

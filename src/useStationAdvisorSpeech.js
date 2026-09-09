@@ -5,6 +5,44 @@ import { createSpeechChunkQueue, createSpeechTurnId, splitSpeechSegments } from 
 const defaultVoiceId = "zh-ll-2";
 const nativeSpeechOutputGain = 2.8;
 
+export function speechPlaybackOutcome(result, { played = false, streamError = null } = {}) {
+  const cancelled = Boolean(result?.cancelled);
+  const reset = Boolean(result?.reset);
+  const partial = Boolean(result?.partial);
+  const failed = Boolean(streamError) || !result?.ok || partial || reset;
+  const fellBackToVits = result?.engineRequested === "qwen3-tts" && result?.engineUsed === "vits";
+  if (cancelled) return { complete: false, allowBrowserFallback: false, message: "", notice: "" };
+  if (failed) {
+    return {
+      complete: false,
+      allowBrowserFallback: !played && !partial && !reset,
+      message: reset && fellBackToVits
+        ? "语音已切换轻量语音，请重新播放"
+        : "语音未完整播放，请重试",
+      notice: "",
+    };
+  }
+  return {
+    complete: true,
+    allowBrowserFallback: false,
+    message: "",
+    notice: fellBackToVits || result?.degraded || result?.fallbackReason ? "高质量语音暂时不可用，已切换轻量语音" : "",
+  };
+}
+
+export function mergeSpeechEngineRuntimeStatus(status, runtimeLatch) {
+  if (!runtimeLatch) return status;
+  return {
+    ...(status || {}),
+    requested: runtimeLatch.engineRequested || status?.requested || "vits",
+    used: runtimeLatch.engineUsed || status?.used || "vits",
+    degraded: Boolean(runtimeLatch.degraded),
+    fallbackReason: runtimeLatch.fallbackReason || null,
+    resourceVersion: runtimeLatch.resourceVersion || status?.resourceVersion || null,
+    runtimeIncomplete: Boolean(runtimeLatch.incomplete),
+  };
+}
+
 function recordSpeechQaEvent(type, details = {}) {
   if (!window.kioskBridge?.qaAvatar) return;
   const events = Array.isArray(window.__XIAOAN_SPEECH_QA_EVENTS__)
@@ -36,6 +74,8 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
   const [preparing, setPreparing] = useState(false);
   const [mood, setMood] = useState("neutral");
   const [speechError, setSpeechError] = useState("");
+  const [speechNotice, setSpeechNotice] = useState("");
+  const [speechEngineUpdate, setSpeechEngineUpdate] = useState(null);
   const audioContextRef = useRef(null);
   const audioSourceRef = useRef(null);
   const audioGainRef = useRef(null);
@@ -45,6 +85,7 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
   const fetchAbortControllersRef = useRef(new Set());
   const ticketRef = useRef(0);
   const activeTurnRef = useRef("");
+  const interruptedSourcesRef = useRef(new WeakSet());
 
   const stop = useCallback(() => {
     const activeTurn = activeTurnRef.current;
@@ -55,6 +96,7 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
     for (const controller of fetchAbortControllersRef.current) controller.abort();
     fetchAbortControllersRef.current.clear();
     utteranceRef.current = null;
+    if (audioSourceRef.current) interruptedSourcesRef.current.add(audioSourceRef.current);
     try { audioSourceRef.current?.stop(); } catch {}
     audioSourceRef.current = null;
     audioGainRef.current = null;
@@ -64,6 +106,8 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
     setPreparing(false);
     setSpeaking(false);
     setMood("neutral");
+    setSpeechError("");
+    setSpeechNotice("");
   }, []);
 
   const speak = useCallback((value) => {
@@ -72,11 +116,17 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
 
     stop();
     setSpeechError("");
+    setSpeechNotice("");
     const ticket = ticketRef.current;
     const turnId = createSpeechTurnId(ticket);
     activeTurnRef.current = turnId;
     recordSpeechQaEvent("turn-start");
     const isCurrentTurn = () => ticket === ticketRef.current && activeTurnRef.current === turnId;
+    let latestEngineUpdate = null;
+    const publishEngineUpdate = (update) => {
+      latestEngineUpdate = update;
+      setSpeechEngineUpdate(update);
+    };
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (AudioContextClass && !audioContextRef.current) {
       try { audioContextRef.current = new AudioContextClass(); } catch { audioContextRef.current = null; }
@@ -184,11 +234,12 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
             setSpeaking(keepSpeaking);
             setPreparing(!keepSpeaking);
           }
+          const uninterrupted = completed && !interruptedSourcesRef.current.has(source);
           recordSpeechQaEvent("play-end", {
             chunkIndex: Number(result.chunkIndex) || 0,
-            completed: Boolean(completed),
+            completed: Boolean(uninterrupted),
           });
-          resolve(Boolean(completed && isCurrentTurn()));
+          resolve(Boolean(uninterrupted && isCurrentTurn()));
         };
         const watchdog = window.setTimeout(() => {
           source.onended = null;
@@ -209,7 +260,26 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
       if (window.kioskBridge?.synthesizeSpeechStream) {
         const queue = createSpeechChunkQueue();
         const streamId = `${turnId}-${index}`;
+        const haltStreamPlayback = () => {
+          const source = audioSourceRef.current;
+          if (source) interruptedSourcesRef.current.add(source);
+          try { source?.stop(); } catch {}
+          audioSourceRef.current = null;
+          audioGainRef.current = null;
+          analyserRef.current = null;
+          visemeTimelineRef.current = null;
+          if (isCurrentTurn()) {
+            setPreparing(false);
+            setSpeaking(false);
+            setMood("neutral");
+          }
+        };
         const promise = window.kioskBridge.synthesizeSpeechStream(segment, { ...options, streamId }, (event) => {
+          if (isCurrentTurn() && (event?.type === "reset" || event?.reset)) {
+            haltStreamPlayback();
+            queue.fail(Object.assign(new Error("语音流已重置"), { speechResult: event }));
+            return;
+          }
           if (isCurrentTurn() && event?.type === "chunk" && event.samples?.length) {
             recordSpeechQaEvent("chunk-received", {
               chunkIndex: Number(event.chunkIndex) || 0,
@@ -225,9 +295,15 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
             chunkCount: Number(result?.chunkCount) || 0,
             firstChunkMs: Number(result?.firstChunkMs) || 0,
           });
-          queue.close();
+          if (!result?.ok || result?.partial || result?.reset) {
+            haltStreamPlayback();
+            queue.fail(Object.assign(new Error(result?.message || "语音流未完整结束"), { speechResult: result }));
+          } else {
+            queue.close();
+          }
           return result;
         }).catch((error) => {
+          haltStreamPlayback();
           queue.fail(error);
           return { ok: false, message: error?.message || "本地流式语音合成暂时不可用" };
         });
@@ -259,10 +335,23 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
     const playPreparedSegment = async (prepared) => {
       if (prepared.mode === "complete") {
         const result = await prepared.promise;
-        if (!result?.ok && isCurrentTurn() && !result?.cancelled) setSpeechError(result?.message || "本地语音合成暂时不可用");
-        return result?.ok ? playNativeSegment(result, prepared.segment) : false;
+        publishEngineUpdate({
+          engineRequested: result?.engineRequested || null,
+          engineUsed: result?.engineUsed || null,
+          degraded: Boolean(result?.degraded || result?.fallbackReason),
+          fallbackReason: result?.fallbackReason || null,
+          resourceVersion: result?.resourceVersion || null,
+          incomplete: Boolean(result?.partial || result?.reset || !result?.ok),
+        });
+        const outcome = speechPlaybackOutcome(result);
+        if (outcome.message && !outcome.allowBrowserFallback && isCurrentTurn()) setSpeechError(outcome.message);
+        if (outcome.notice && isCurrentTurn()) setSpeechNotice(outcome.notice);
+        if (!outcome.complete) return { played: false, complete: false, allowBrowserFallback: outcome.allowBrowserFallback };
+        const nativePlayed = await playNativeSegment(result, prepared.segment);
+        return { played: nativePlayed, complete: nativePlayed, allowBrowserFallback: !nativePlayed };
       }
       let played = false;
+      let streamError = null;
       try {
         while (isCurrentTurn()) {
           setPreparing(true);
@@ -272,15 +361,26 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
             { ok: true, ...chunk },
             chunk.text || prepared.segment,
             { retainSpeaking: () => prepared.queue.pending() > 0 },
-          )) return played;
+          )) break;
           played = true;
         }
       } catch (error) {
-        if (isCurrentTurn()) setSpeechError(error?.message || "本地流式语音合成暂时不可用");
+        streamError = error;
       }
       const result = await prepared.promise;
-      if (!result?.ok && isCurrentTurn() && !result?.cancelled) setSpeechError(result?.message || "本地流式语音合成暂时不可用");
-      return played;
+      const effectiveResult = { ...result, ...(streamError?.speechResult || {}) };
+      publishEngineUpdate({
+        engineRequested: effectiveResult?.engineRequested || null,
+        engineUsed: effectiveResult?.engineUsed || null,
+        degraded: Boolean(effectiveResult?.degraded || effectiveResult?.fallbackReason),
+        fallbackReason: effectiveResult?.fallbackReason || null,
+        resourceVersion: effectiveResult?.resourceVersion || null,
+        incomplete: Boolean(streamError || effectiveResult?.partial || effectiveResult?.reset || !effectiveResult?.ok),
+      });
+      const outcome = speechPlaybackOutcome(effectiveResult, { played, streamError });
+      if (outcome.message && !outcome.allowBrowserFallback && isCurrentTurn()) setSpeechError(outcome.message);
+      if (outcome.notice && isCurrentTurn()) setSpeechNotice(outcome.notice);
+      return { played, complete: outcome.complete && played, allowBrowserFallback: outcome.allowBrowserFallback };
     };
 
     const run = async () => {
@@ -298,12 +398,17 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
         for (const prepared of preparedSegments) {
           if (!isCurrentTurn()) return false;
           setPreparing(true);
-          const nativePlayed = await playPreparedSegment(prepared);
-          if (!nativePlayed) {
-            if (!await playBrowserSegment(prepared.segment)) return played;
+          const native = await playPreparedSegment(prepared);
+          if (!native.complete) {
+            if (native.allowBrowserFallback && !native.played) {
+              if (!await playBrowserSegment(prepared.segment)) return false;
+            } else {
+              return false;
+            }
           }
           played = true;
         }
+        if (played && latestEngineUpdate) publishEngineUpdate({ ...latestEngineUpdate, incomplete: false, turnComplete: true });
         return played;
       } finally {
         if (isCurrentTurn()) {
@@ -335,6 +440,8 @@ export function useStationAdvisorSpeech({ muted = false, slow = false, volume = 
     speak,
     speaking,
     speechError,
+    speechEngineUpdate,
+    speechNotice,
     stop,
     visemeTimelineRef,
   };

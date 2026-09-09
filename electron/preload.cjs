@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("kioskBridge", {
   speechStatus: () => ipcRenderer.invoke("speech:status"),
+  speechEngineStatus: () => ipcRenderer.invoke("speech:engine-status"),
+  speechRuntimeState: () => ipcRenderer.invoke("speech:runtime-state"),
+  validateSpeechEngine: (engine) => ipcRenderer.invoke("speech:validate-engine", engine),
+  setSpeechEngine: (engine) => ipcRenderer.invoke("speech:set-engine", engine),
   recognizePcm: (samples, sampleRate = 16000) => ipcRenderer.invoke("speech:recognize", { samples, sampleRate }),
   recognizePreviewPcm: (samples, sampleRate = 16000) => ipcRenderer.invoke("speech:recognize-preview", { samples, sampleRate }),
   synthesizeSpeech: (text, options = {}) => ipcRenderer.invoke("speech:synthesize", { text, ...options }),

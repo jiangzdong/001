@@ -37,7 +37,7 @@ test("live speech path uses the recognized transcript, confirms playback and omi
   const harnessInputs = [];
   const speech = {
     status: () => ({ ready: true }),
-    synthesize: async () => ({ ok: true, samples: sample(), sampleRate: 16000, visemes: [{ atMs: 0, shape: "A" }] }),
+    synthesize: async () => ({ ok: true, samples: sample(), sampleRate: 16000, visemes: [{ atMs: 0, shape: "A" }], alignment: { provider: "sensevoice-character-timestamps" } }),
     recognize: async () => ({ ok: true, provider: "sherpa-onnx-sensevoice-local", trustedFinal: true, text: recognized }),
     cancelTurn: () => true,
   };
@@ -72,6 +72,7 @@ test("live speech path uses the recognized transcript, confirms playback and omi
   const storedAudio = report.events.filter((event) => event.type === "voice-audio");
   assert.equal(storedAudio.length, 2);
   assert.ok(storedAudio.every((event) => event.payload.samplesOmitted === true && !("samples" in event.payload)));
+  assert.ok(storedAudio.every((event) => event.payload.alignmentProvider === "sensevoice-character-timestamps"));
   assert.ok(JSON.stringify(report).length < 200_000);
 });
 

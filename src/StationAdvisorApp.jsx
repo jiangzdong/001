@@ -31,7 +31,7 @@ import { AdvisorChineseKeyboard } from "./AdvisorChineseKeyboard.jsx";
 import { isMemberAuthorizationRequired, resolveAdvisorIntent } from "./stationAdvisorInput.js";
 import { advisorInteractionRetryDelayMs } from "./stationAdvisorInteraction.js";
 import { StationAdvisorDigitalHuman } from "./StationAdvisorDigitalHuman.jsx";
-import { useStationAdvisorSpeech } from "./useStationAdvisorSpeech.js";
+import { mergeSpeechEngineRuntimeStatus, useStationAdvisorSpeech } from "./useStationAdvisorSpeech.js";
 import { VirtualSeniorTestConsole } from "./VirtualSeniorTestConsole.jsx";
 
 const appVersion = `V${__APP_VERSION__}`;
@@ -210,6 +210,51 @@ function mcpConfigurationApi() {
     clear: () => bridge.clearMcpConfig(),
     test: (servers) => bridge.testMcpConfig(servers),
   };
+}
+
+function speechEngineConfigurationApi() {
+  const bridge = window.kioskBridge;
+  if (!bridge?.speechEngineStatus || !bridge?.setSpeechEngine) return null;
+  return {
+    status: () => bridge.speechEngineStatus(),
+    runtime: () => bridge.speechRuntimeState ? bridge.speechRuntimeState() : bridge.speechEngineStatus(),
+    save: (engine) => bridge.setSpeechEngine(engine),
+  };
+}
+
+const speechEngineLabels = Object.freeze({
+  vits: "VITS 轻量语音",
+  "qwen3-tts": "Qwen3-TTS 高质量语音",
+});
+
+function friendlySpeechEngineReason(engine, status) {
+  if (engine !== "qwen3-tts") return "本地轻量语音暂未就绪";
+  const option = status?.engines?.find((item) => item?.id === engine);
+  const code = String(option?.code || status?.qwen?.code || "");
+  if (code === "QWEN_UNSUPPORTED_MACOS_VERSION") return `Qwen3-TTS 需要 macOS ${option?.requiredMacOSVersion || status?.qwen?.requiredMacOSVersion || "26.2.0"} 或更高；当前为 ${option?.currentMacOSVersion || status?.qwen?.currentMacOSVersion || "未知版本"}，已继续使用 VITS`;
+  if (option?.selectable === false) return "仅支持 Apple 芯片 Mac，当前终端将继续使用 VITS";
+  if (option?.installed === false || option?.configured === false || code.includes("NOT_CONFIGURED") || code.includes("MISSING")) return "高质量语音资源尚未安装，当前终端将继续使用 VITS";
+  if (code.includes("HASH") || code.includes("INVALID") || code.includes("INCOMPLETE")) return "上次资源检测未通过，保存后可重新检测";
+  if (option?.validated === false || status?.qwen?.validated === false || code.includes("NOT_VALIDATED")) return "高质量语音资源已安装，保存后将进行检测";
+  if (code.includes("CIRCUIT") || code.includes("WORKER") || code.includes("TIMEOUT")) return "高质量语音暂时不可用，当前终端已自动改用 VITS";
+  return option?.ready === false ? "保存后将检测高质量语音资源" : "高质量语音已就绪";
+}
+
+function qwenSpeechEngineUnavailable(status) {
+  const option = status?.engines?.find((item) => item?.id === "qwen3-tts");
+  if (!option || option.selectable === false) return true;
+  const code = String(option.code || status?.qwen?.code || "");
+  const installed = option.installed ?? option.configured ?? status?.qwen?.configured;
+  return installed === false || code.includes("NOT_CONFIGURED") || code.includes("MISSING");
+}
+
+function speechEngineSummary(status) {
+  if (!status) return "正在读取语音配置";
+  const requested = speechEngineLabels[status.requested] || speechEngineLabels.vits;
+  const used = speechEngineLabels[status.used] || speechEngineLabels.vits;
+  if (status.runtimeIncomplete) return `${requested} 本次未完整播放，请重试`;
+  if (status.degraded || status.requested !== status.used) return `已选 ${requested}，已自动改用 ${used}`;
+  return `当前使用 ${used}`;
 }
 
 function HeaderButton({ icon: Icon, label, active = false, onClick }) {
@@ -703,7 +748,7 @@ function DeepSeekSetupDialog({ configured, onClose, onConfigurationChange, onOpe
   );
 }
 
-function TerminalSettingsDialog({ modelConfigured, onClose, onManageModel, onManageMcp, onManageVirtualSenior }) {
+function TerminalSettingsDialog({ modelConfigured, speechEngineStatus, onClose, onManageModel, onManageMcp, onManageSpeech, onManageVirtualSenior }) {
   return (
     <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
       <section className="advisor-exit-dialog advisor-terminal-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-terminal-settings-title">
@@ -719,6 +764,9 @@ function TerminalSettingsDialog({ modelConfigured, onClose, onManageModel, onMan
           <button className="advisor-terminal-setting" type="button" onClick={onManageMcp}>
             <Buildings weight="duotone" /><span><strong>业务数据服务</strong><small>配置并检测 5 项 MCP 服务</small></span><ArrowRight weight="bold" />
           </button>
+          <button data-testid="advisor-open-speech-engine" className="advisor-terminal-setting" type="button" onClick={onManageSpeech}>
+            <SpeakerHigh weight="duotone" /><span><strong>回答语音</strong><small>{speechEngineSummary(speechEngineStatus)}</small></span><ArrowRight weight="bold" />
+          </button>
           <button className="advisor-terminal-setting" type="button" onClick={onManageVirtualSenior}>
             <Flask weight="duotone" /><span><strong>虚拟长者测试</strong><small>只使用隔离合成数据</small></span><ArrowRight weight="bold" />
           </button>
@@ -726,6 +774,141 @@ function TerminalSettingsDialog({ modelConfigured, onClose, onManageModel, onMan
             <PersonSimpleCircle weight="duotone" /><span><strong>站点账号</strong><small>账号登录与登出服务待接入</small></span><Info weight="bold" />
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function SpeechEngineDialog({ initialStatus, onClose, onBack, onStatusChange }) {
+  const api = useMemo(() => speechEngineConfigurationApi(), []);
+  const [status, setStatus] = useState(initialStatus || null);
+  const [selected, setSelected] = useState(initialStatus?.requested || "vits");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState("");
+  const firstOptionRef = useRef(null);
+
+  const applyStatus = useCallback((nextStatus, { confirmed = false } = {}) => {
+    if (!nextStatus) return;
+    const presentedStatus = onStatusChange(nextStatus, { confirmed }) || nextStatus;
+    setStatus(presentedStatus);
+    setSelected(presentedStatus.requested || "vits");
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      if (!api) {
+        if (active) {
+          setLoading(false);
+          setMessage("语音选择仅在桌面应用中提供。");
+          setMessageTone("error");
+        }
+        return;
+      }
+      try {
+        const nextStatus = await api.status();
+        if (active) applyStatus(nextStatus);
+      } catch {
+        if (active) {
+          setMessage("读取语音配置失败，请稍后重试。");
+          setMessageTone("error");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+          window.requestAnimationFrame(() => firstOptionRef.current?.focus({ preventScroll: true }));
+        }
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [api, applyStatus]);
+
+  const options = [
+    {
+      id: "vits",
+      title: "VITS",
+      description: "轻量、省资源，当前平台默认",
+      unavailable: false,
+      reason: "",
+    },
+    {
+      id: "qwen3-tts",
+      title: "Qwen3-TTS",
+      description: "Apple Silicon 高质量语音",
+      unavailable: qwenSpeechEngineUnavailable(status),
+      reason: friendlySpeechEngineReason("qwen3-tts", status),
+    },
+  ];
+
+  const save = async () => {
+    if (!api || saving || loading) return;
+    const option = options.find((item) => item.id === selected);
+    if (!option || option.unavailable) return;
+    setSaving(true);
+    setMessage(selected === "qwen3-tts" ? "正在检测高质量语音资源…" : "正在保存语音设置…");
+    setMessageTone("");
+    try {
+      const result = await api.save(selected);
+      if (!result?.ok) {
+        applyStatus(result);
+        setMessage(friendlySpeechEngineReason("qwen3-tts", result));
+        setMessageTone("error");
+        return;
+      }
+      applyStatus(result, { confirmed: true });
+      if (result.degraded || result.requested !== result.used) {
+        setMessage(`设置已保存，但已自动改用 ${speechEngineLabels[result.used] || "VITS 轻量语音"}。`);
+        setMessageTone("warning");
+      } else {
+        setMessage(`已切换到 ${speechEngineLabels[result.used] || "所选语音"}。`);
+        setMessageTone("success");
+      }
+    } catch {
+      setSelected(status?.requested || "vits");
+      setMessage("保存失败，原语音设置保持不变，请稍后重试。");
+      setMessageTone("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="advisor-dialog-scrim" role="presentation" onKeyDown={(event) => { if (event.key === "Escape" && !saving) onBack(); }}>
+      <section className="advisor-exit-dialog advisor-model-setup-dialog advisor-speech-engine-dialog" role="dialog" aria-modal="true" aria-labelledby="advisor-speech-engine-title" aria-describedby="advisor-speech-engine-description">
+        <button className="advisor-dialog-close" type="button" onClick={onClose} disabled={saving} aria-label="关闭"><X weight="bold" /></button>
+        <span className="advisor-exit-dialog__icon"><SpeakerHigh weight="duotone" /></span>
+        <p>终端设置</p>
+        <h2 id="advisor-speech-engine-title">回答语音</h2>
+        <small id="advisor-speech-engine-description">选择小安回答时使用的本地语音。高质量语音不可用时，系统会自动使用轻量语音。</small>
+        <fieldset className="advisor-speech-engine-options" disabled={loading || saving || !api} aria-busy={loading || saving}>
+          <legend className="advisor-sr-only">选择回答语音</legend>
+          {options.map((option, index) => (
+            <label className={`advisor-speech-engine-option ${option.unavailable ? "is-unavailable" : ""}`} key={option.id}>
+              <input
+                ref={index === 0 ? firstOptionRef : undefined}
+                data-testid={`advisor-speech-engine-${option.id}`}
+                type="radio"
+                name="advisor-speech-engine"
+                value={option.id}
+                checked={selected === option.id}
+                onChange={() => { setSelected(option.id); setMessage(""); setMessageTone(""); }}
+                disabled={option.unavailable || loading || saving || !api}
+              />
+              <span className="advisor-speech-engine-option__control" aria-hidden="true"><Check weight="bold" /></span>
+              <span><strong>{option.title}</strong><small>{option.description}</small>{option.id === "qwen3-tts" && status && <small className={option.unavailable ? "is-unavailable-reason" : "is-resource-note"}>{option.reason}</small>}</span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="advisor-speech-engine-current" role="status" aria-live="polite">
+          <Info weight="bold" />
+          <span><strong>{speechEngineSummary(status)}</strong>{status?.degraded && <small>{friendlySpeechEngineReason(status.requested, status)}</small>}</span>
+        </div>
+        <button data-testid="advisor-speech-engine-save" className="advisor-exit-submit" type="button" onClick={save} disabled={loading || saving || !api || !status || options.find((item) => item.id === selected)?.unavailable}>{saving ? selected === "qwen3-tts" ? "正在检测…" : "正在保存…" : "保存语音设置"}</button>
+        <button className="advisor-auth-secondary" type="button" onClick={onBack} disabled={saving}>返回终端设置</button>
+        {message && <div className={`advisor-pin-message ${messageTone ? `is-${messageTone}` : ""}`} role={messageTone === "error" ? "alert" : "status"} aria-live="polite">{message}</div>}
       </section>
     </div>
   );
@@ -834,10 +1017,13 @@ export function StationAdvisorApp() {
   const [showTerminalSettings, setShowTerminalSettings] = useState(false);
   const [showModelSetup, setShowModelSetup] = useState(false);
   const [showMcpSetup, setShowMcpSetup] = useState(false);
+  const [showSpeechEngineSetup, setShowSpeechEngineSetup] = useState(false);
   const [showVirtualSenior, setShowVirtualSenior] = useState(() => Boolean(window.kioskBridge?.virtualSeniorAutoOpen));
   const [virtualSeniorAvailable, setVirtualSeniorAvailable] = useState(() => Boolean(window.kioskBridge?.virtualSeniorAvailable));
   const [virtualSeniorDualScreen, setVirtualSeniorDualScreen] = useState(() => Boolean(window.kioskBridge?.virtualSeniorDualScreen));
   const [modelConfigured, setModelConfigured] = useState(null);
+  const [speechEngineStatus, setSpeechEngineStatus] = useState(null);
+  const speechRuntimeLatchRef = useRef(null);
   const [expandedPoints, setExpandedPoints] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState([]);
@@ -864,6 +1050,9 @@ export function StationAdvisorApp() {
     preparing: speechPreparing,
     speak,
     speaking,
+    speechError,
+    speechEngineUpdate,
+    speechNotice,
     stop: stopSpeaking,
     visemeTimelineRef: speechVisemeTimelineRef,
   } = useStationAdvisorSpeech({ muted });
@@ -881,6 +1070,33 @@ export function StationAdvisorApp() {
       if (active) setModelConfigured(false);
     });
     return () => { active = false; };
+  }, []);
+
+  const refreshSpeechEngineStatus = useCallback(async () => {
+    const api = speechEngineConfigurationApi();
+    if (!api) return null;
+    const status = await api.runtime();
+    const merged = mergeSpeechEngineRuntimeStatus(status, speechRuntimeLatchRef.current);
+    setSpeechEngineStatus(merged);
+    return merged;
+  }, []);
+
+  useEffect(() => { void refreshSpeechEngineStatus().catch(() => undefined); }, [refreshSpeechEngineStatus]);
+
+  useEffect(() => {
+    if (!speechEngineUpdate) return;
+    const hasRuntimeProblem = Boolean(speechEngineUpdate.incomplete || speechEngineUpdate.degraded || speechEngineUpdate.fallbackReason);
+    if (hasRuntimeProblem) speechRuntimeLatchRef.current = speechEngineUpdate;
+    else if (speechEngineUpdate.turnComplete) speechRuntimeLatchRef.current = null;
+    setSpeechEngineStatus((current) => mergeSpeechEngineRuntimeStatus(current, speechRuntimeLatchRef.current || speechEngineUpdate));
+    if (speechEngineUpdate.degraded || speechEngineUpdate.incomplete) void refreshSpeechEngineStatus().catch(() => undefined);
+  }, [refreshSpeechEngineStatus, speechEngineUpdate]);
+
+  const handleSpeechEngineStatusChange = useCallback((nextStatus, { confirmed = false } = {}) => {
+    if (confirmed) speechRuntimeLatchRef.current = null;
+    const merged = mergeSpeechEngineRuntimeStatus(nextStatus, speechRuntimeLatchRef.current);
+    setSpeechEngineStatus(merged);
+    return merged;
   }, []);
 
   const response = useMemo(() => responseId ? responses[responseId] : null, [responseId]);
@@ -1008,13 +1224,26 @@ export function StationAdvisorApp() {
         if (screenRef.current === "conversation") setScreen("consent");
       });
     } else {
-      void Promise.resolve(speech).finally(() => {
+      void Promise.resolve(speech).then((completed) => {
         if (answerSequence !== answerSequenceRef.current || nextResponse.errorCode === "MODEL_NOT_CONFIGURED") return;
         if (screenRef.current !== "home" && screenRef.current !== "conversation") return;
+        if (!completed) {
+          setAutoVoiceEnabled(false);
+          voiceStateRef.current = "error";
+          setVoiceState("error");
+          setVoiceMessage("语音未完整播放，请重试");
+          return;
+        }
         setAutoVoiceEnabled(true);
         voiceStateRef.current = "idle";
         setVoiceState("idle");
         setVoiceMessage("");
+      }).catch(() => {
+        if (answerSequence !== answerSequenceRef.current) return;
+        setAutoVoiceEnabled(false);
+        voiceStateRef.current = "error";
+        setVoiceState("error");
+        setVoiceMessage("语音未完整播放，请重试");
       });
     }
   }, [speak, stopSpeaking, stopVoice]);
@@ -1287,12 +1516,12 @@ export function StationAdvisorApp() {
 
   useEffect(() => {
     const conversationalScreen = screen === "home" || screen === "conversation";
-    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showTerminalSettings || showModelSetup || showMcpSetup || showVirtualSenior || keyboardMode || speaking || speechPreparing) return undefined;
+    if (!conversationalScreen || !autoVoiceEnabled || voiceState !== "idle" || draft || showExit || showTerminalSettings || showModelSetup || showMcpSetup || showSpeechEngineSetup || showVirtualSenior || keyboardMode || speaking || speechPreparing) return undefined;
     const retrying = Boolean(voiceMessage);
     const delayMs = retrying ? advisorInteractionRetryDelayMs : screen === "home" ? 650 : 1050;
     autoListenTimerRef.current = window.setTimeout(() => startListening({ automatic: true }), delayMs);
     return () => window.clearTimeout(autoListenTimerRef.current);
-  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, showTerminalSettings, showVirtualSenior, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
+  }, [autoVoiceEnabled, draft, keyboardMode, screen, showExit, showMcpSetup, showModelSetup, showSpeechEngineSetup, showTerminalSettings, showVirtualSenior, speaking, speechPreparing, startListening, voiceMessage, voiceState]);
 
   useEffect(() => () => {
     operationIdRef.current += 1;
@@ -1347,11 +1576,13 @@ export function StationAdvisorApp() {
           ? "正在准备本地语音回答"
           : speaking
             ? "小安正在回答"
+            : voiceState === "error"
+              ? speechError || voiceMessage || "语音未完整播放，请重试"
             : voiceState === "paused" || !autoVoiceEnabled
               ? modelConfigured === false
                 ? "大模型未连接，点右侧连接"
                 : "语音已暂停"
-              : voiceMessage || "自动聆听已开启，请直接说话";
+              : speechError || speechNotice || voiceMessage || "自动聆听已开启，请直接说话";
 
   const openTerminalManagement = () => {
     stopVoice({ discard: true });
@@ -1360,12 +1591,15 @@ export function StationAdvisorApp() {
     setKeyboardMode(false);
     setShowMcpSetup(false);
     setShowModelSetup(false);
+    setShowSpeechEngineSetup(false);
     setShowTerminalSettings(true);
+    void refreshSpeechEngineStatus().catch(() => undefined);
   };
   const closeTerminalManagement = () => {
     setShowTerminalSettings(false);
     setShowModelSetup(false);
     setShowMcpSetup(false);
+    setShowSpeechEngineSetup(false);
     if (modelConfigured !== false) {
       setAutoVoiceEnabled(true);
       voiceStateRef.current = "idle";
@@ -1475,9 +1709,10 @@ export function StationAdvisorApp() {
           onSubmit={(value) => submitText(value || draftRef.current)}
         />
         {showExit && <ExitDialog onClose={() => setShowExit(false)} />}
-        {showTerminalSettings && <TerminalSettingsDialog modelConfigured={modelConfigured === true} onClose={closeTerminalManagement} onManageModel={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} onManageMcp={() => { setShowTerminalSettings(false); setShowMcpSetup(true); }} onManageVirtualSenior={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} />}
+        {showTerminalSettings && <TerminalSettingsDialog modelConfigured={modelConfigured === true} speechEngineStatus={speechEngineStatus} onClose={closeTerminalManagement} onManageModel={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} onManageMcp={() => { setShowTerminalSettings(false); setShowMcpSetup(true); }} onManageSpeech={() => { setShowTerminalSettings(false); setShowSpeechEngineSetup(true); }} onManageVirtualSenior={() => { setShowTerminalSettings(false); setShowModelSetup(true); }} />}
         {showModelSetup && <DeepSeekSetupDialog configured={modelConfigured === true} onClose={closeTerminalManagement} onConfigurationChange={handleModelConfigurationChange} onOpenMcp={() => { setShowModelSetup(false); setShowMcpSetup(true); }} onOpenVirtualSenior={() => { setShowModelSetup(false); setShowVirtualSenior(true); }} onVirtualSeniorActivated={(result) => { setVirtualSeniorAvailable(true); setVirtualSeniorDualScreen(result?.surface === "window"); }} virtualSeniorAvailable={virtualSeniorAvailable} />}
         {showMcpSetup && <McpSetupDialog onClose={closeTerminalManagement} onBack={() => { setShowMcpSetup(false); setShowTerminalSettings(true); }} />}
+        {showSpeechEngineSetup && <SpeechEngineDialog initialStatus={speechEngineStatus} onClose={closeTerminalManagement} onBack={() => { setShowSpeechEngineSetup(false); setShowTerminalSettings(true); }} onStatusChange={handleSpeechEngineStatusChange} />}
         <VirtualSeniorTestConsole ProductSurface={ConversationScreen} open={showVirtualSenior} onClose={() => { setShowVirtualSenior(false); closeTerminalManagement(); }} />
       </div>
     </div>

@@ -1,22 +1,28 @@
 const { Worker } = require("worker_threads");
 const fs = require("fs");
 const path = require("path");
+const { createQwen3TtsProvider } = require("./qwen3-tts-provider.cjs");
+const { createSpeechEngineSettings } = require("./speech-engine-settings.cjs");
 
 const voices = [{ id: "zh-ll-2", label: "小安默认女声", detail: "普通话女声", modelId: "zh-ll", sid: 2 }];
 const defaultVoiceId = "zh-ll-2";
 const finalOfflineAsrProvider = "sherpa-onnx-sensevoice-local";
 
-function createSpeechService({ app }) {
+function createSpeechService({ app, platform = process.platform, arch = process.arch, systemVersion = typeof process.getSystemVersion === "function" ? process.getSystemVersion() : "", qwenResourcePackPath, qwenDevelopmentResource = null, createQwenProvider = createQwen3TtsProvider } = {}) {
+  const userDataRoot = typeof app.getPath === "function" ? app.getPath("userData") : path.join(app.getAppPath(), ".cache");
   const modelsRoot = app.isPackaged
     ? path.join(process.resourcesPath, "models")
     : path.join(app.getAppPath(), "models");
-  const requiredFiles = [
+  const asrRequiredFiles = [
     "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/model.int8.onnx",
     "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17/tokens.txt",
+  ];
+  const vitsRequiredFiles = [
     "sherpa-onnx-vits-zh-ll/model.onnx",
     "sherpa-onnx-vits-zh-ll/tokens.txt",
     "sherpa-onnx-vits-zh-ll/lexicon.txt",
   ];
+  const requiredFiles = [...asrRequiredFiles, ...vitsRequiredFiles];
   // One warmed worker serially prefetches upcoming segments while the current
   // PCM buffer is playing. Running two VITS instances at once saturated the
   // 6-core kiosk and caused visible compositor stalls without improving the
@@ -33,8 +39,19 @@ function createSpeechService({ app }) {
   const warmedModels = new Set();
   const warmupPromises = new Map();
   const alignmentCache = new Map();
+  const engineSettings = createSpeechEngineSettings({ filePath: path.join(userDataRoot, "speech-engine.json"), platform, arch });
+  let requestedEngine = engineSettings.read().requested;
+  let actualUsed = null;
+  const qwen = createQwenProvider({
+    resourcePackPath: qwenResourcePackPath ?? process.env.QWEN3_TTS_RESOURCE_PACK ?? path.join(userDataRoot, "qwen3-tts-resource-pack"),
+    developmentResource: qwenDevelopmentResource,
+    platform,
+    arch,
+    systemVersion,
+    allowUntrustedDevelopment: !app.isPackaged && (qwenResourcePackPath !== undefined || qwenDevelopmentResource !== null),
+  });
 
-  function status() {
+  function vitsStatus() {
     const missing = requiredFiles.filter((file) => !fs.existsSync(path.join(modelsRoot, file)));
     return {
       ready: missing.length === 0,
@@ -49,6 +66,55 @@ function createSpeechService({ app }) {
       warmedModels: [...warmedModels],
       missing,
     };
+  }
+
+  function engineStatus() {
+    const vits = vitsStatus();
+    const qwenState = qwen.status();
+    const asrMissing = asrRequiredFiles.filter((file) => !fs.existsSync(path.join(modelsRoot, file)));
+    const wantsQwen = requestedEngine === "qwen3-tts";
+    const used = wantsQwen && qwenState.ready ? "qwen3-tts" : "vits";
+    const fallbackReason = wantsQwen && !qwenState.ready ? qwenState.reason || qwenState.code || "Qwen3-TTS 不可用" : null;
+    return {
+      ...vits,
+      ttsModel: used === "qwen3-tts" ? "Qwen3-TTS 1.7B CustomVoice external resource pack" : vits.ttsModel,
+      requested: requestedEngine,
+      used,
+      configured: wantsQwen ? Boolean(qwenState.configured) : true,
+      validated: wantsQwen ? Boolean(qwenState.validated) : vits.ready,
+      started: wantsQwen ? Boolean(qwenState.started) : warmedModels.has("zh-ll"),
+      actualUsed,
+      ready: used === "qwen3-tts" ? qwenState.ready && asrMissing.length === 0 : vits.ready,
+      degraded: Boolean(fallbackReason),
+      fallbackReason,
+      resourceVersion: used === "qwen3-tts" ? qwenState.resourceVersion : null,
+      missing: used === "qwen3-tts" ? asrMissing : vits.missing,
+      engines: [
+        { id: "vits", label: "VITS（轻量）", selectable: true, ready: vits.ready },
+        { id: "qwen3-tts", label: "Qwen3-TTS（高质量）", selectable: qwenState.supported === true, ready: qwenState.ready, code: qwenState.code || null, reason: qwenState.reason || null, currentMacOSVersion: qwenState.currentMacOSVersion || null, requiredMacOSVersion: qwenState.requiredMacOSVersion || null, resourceVersion: qwenState.resourceVersion || null },
+      ],
+      qwen: qwenState,
+    };
+  }
+
+  function status() { return engineStatus(); }
+
+  async function setEngine(engine) {
+    if (!["vits", "qwen3-tts"].includes(engine) || (engine === "qwen3-tts" && (platform !== "darwin" || arch !== "arm64"))) {
+      return { ...engineSettings.write(engine), ...engineStatus() };
+    }
+    if (engine === "qwen3-tts") {
+      const checked = await qwen.refresh({ resetCircuit: true });
+      if (!checked.ready) return { ok: false, code: checked.code || "QWEN_NOT_READY", ...engineStatus() };
+    }
+    const saved = engineSettings.write(engine);
+    if (saved.ok) requestedEngine = saved.requested;
+    return { ...saved, ...engineStatus() };
+  }
+
+  async function refreshEngineStatus() {
+    if (qwen.status().configured) await qwen.refresh();
+    return engineStatus();
   }
 
   function handleWorkerFailure(roleKey, created, error) {
@@ -73,7 +139,7 @@ function createSpeechService({ app }) {
     const slot = Math.max(0, Math.min(ttsWorkerCount - 1, Number(workerSlot) || 0));
     const existing = role === "alignment" ? alignmentWorker : ttsWorkers[slot];
     if (existing) return existing;
-    const currentStatus = status();
+    const currentStatus = vitsStatus();
     if (!currentStatus.ready) throw new Error(`缺少离线语音模型：${currentStatus.missing.join(", ")}`);
     const created = new Worker(path.join(__dirname, "speech-worker.cjs"), {
       // Two VITS threads keep the next PCM chunk buffered without a multi-second
@@ -215,7 +281,7 @@ function createSpeechService({ app }) {
     return warmupPromises.get(voice.modelId);
   }
 
-  function synthesize(input) {
+  function synthesizeVits(input) {
     const turnId = String(input?.turnId || "").trim().slice(0, 120);
     const slot = synthesisDispatch++ % ttsWorkerCount;
     const task = synthesisTails[slot].catch(() => {}).then(() => runSynthesis(input, turnId, slot));
@@ -223,7 +289,7 @@ function createSpeechService({ app }) {
     return task;
   }
 
-  function synthesizeStream(input, onChunk) {
+  function synthesizeStreamVits(input, onChunk) {
     const turnId = String(input?.turnId || "").trim().slice(0, 120);
     const slot = synthesisDispatch++ % ttsWorkerCount;
     const task = synthesisTails[slot].catch(() => {}).then(() => runSynthesisStream(input, turnId, onChunk, slot));
@@ -257,6 +323,7 @@ function createSpeechService({ app }) {
     if (!key) return false;
     cancelledTurns.add(key);
     for (const worker of ttsWorkers) worker?.postMessage({ id: ++sequence, type: "cancel-turn", payload: { turnId: key } });
+    qwen.cancelTurn(key);
     while (cancelledTurns.size > 256) cancelledTurns.delete(cancelledTurns.values().next().value);
     return true;
   }
@@ -269,9 +336,76 @@ function createSpeechService({ app }) {
     alignmentCache.clear();
     ttsWorkers.fill(undefined);
     alignmentWorker = undefined;
+    qwen.close();
   }
 
-  return { status, warmup, recognize, recognizePreview, synthesize, synthesizeStream, align, cancelTurn, close };
+  function requestedMetadata(requested, used, fallbackReason = null) {
+    return {
+      engineRequested: requested,
+      engineUsed: used,
+      degraded: Boolean(fallbackReason),
+      fallbackReason,
+      resourceVersion: used === "qwen3-tts" ? qwen.status().resourceVersion || null : null,
+    };
+  }
+
+  function requiresStrictQwen(input, requested) {
+    return requested === "qwen3-tts" && (input?.strictEngine === true || input?.strictQwen === true || input?.mode === "virtual-senior-strict");
+  }
+
+  async function synthesize(input = {}) {
+    const requestEngine = requestedEngine;
+    const strictQwen = requiresStrictQwen(input, requestEngine);
+    if (requestEngine !== "qwen3-tts") {
+      const result = await synthesizeVits(input);
+      if (result.ok) actualUsed = "vits";
+      return { ...result, ...requestedMetadata(requestEngine, result.ok ? "vits" : null) };
+    }
+    let qwenState = qwen.status();
+    try {
+      if (!qwenState.ready && typeof qwen.refresh === "function") qwenState = await qwen.refresh();
+      if (!qwenState.ready) throw Object.assign(new Error(qwenState.reason || "Qwen3-TTS 不可用"), { code: qwenState.code || "QWEN_NOT_READY" });
+      const result = await qwen.synthesize(input);
+      if (result.ok) actualUsed = "qwen3-tts";
+      return result;
+    } catch (cause) {
+      const reason = `${cause?.code || "QWEN_FAILED"}: ${cause?.message || cause}`.slice(0, 280);
+      if (strictQwen) return { ok: false, strictEngine: true, message: reason, ...requestedMetadata(requestEngine, null, reason) };
+      const fallback = await synthesizeVits(input);
+      if (fallback.ok) actualUsed = "vits";
+      return { ...fallback, ...requestedMetadata(requestEngine, fallback.ok ? "vits" : null, reason) };
+    }
+  }
+
+  async function synthesizeStream(input = {}, onChunk) {
+    const requestEngine = requestedEngine;
+    const strictQwen = requiresStrictQwen(input, requestEngine);
+    if (requestEngine !== "qwen3-tts") {
+      const result = await synthesizeStreamVits(input, (chunk) => onChunk?.({ ...chunk, ...requestedMetadata(requestEngine, "vits") }));
+      if (result.ok) actualUsed = "vits";
+      return { ...result, ...requestedMetadata(requestEngine, result.ok ? "vits" : null) };
+    }
+    let qwenState = qwen.status();
+    let qwenAudioStarted = false;
+    try {
+      if (!qwenState.ready && typeof qwen.refresh === "function") qwenState = await qwen.refresh();
+      if (!qwenState.ready) throw Object.assign(new Error(qwenState.reason || "Qwen3-TTS 不可用"), { code: qwenState.code || "QWEN_NOT_READY" });
+      const startedAt = performance.now();
+      let firstChunkMs = null;
+      const result = await qwen.synthesize({ ...input, onChunk: (chunk) => { qwenAudioStarted = true; if (firstChunkMs == null) firstChunkMs = performance.now() - startedAt; onChunk?.(chunk); } });
+      if (result.ok) actualUsed = "qwen3-tts";
+      return { ...result, chunkCount: Number(result?.chunks) || 0, firstChunkMs, ...requestedMetadata(requestEngine, "qwen3-tts") };
+    } catch (cause) {
+      const reason = `${cause?.code || "QWEN_FAILED"}: ${cause?.message || cause}`.slice(0, 280);
+      if (qwenAudioStarted) return { ok: false, partial: true, message: reason, chunkCount: 0, ...requestedMetadata(requestEngine, "qwen3-tts", reason) };
+      if (strictQwen) return { ok: false, strictEngine: true, message: reason, chunkCount: 0, ...requestedMetadata(requestEngine, null, reason) };
+      const fallback = await synthesizeStreamVits(input, (chunk) => onChunk?.({ ...chunk, ...requestedMetadata(requestEngine, "vits", reason) }));
+      if (fallback.ok) actualUsed = "vits";
+      return { ...fallback, ...requestedMetadata(requestEngine, fallback.ok ? "vits" : null, reason) };
+    }
+  }
+
+  return { status, engineStatus, refreshEngineStatus, setEngine, warmup, recognize, recognizePreview, synthesize, synthesizeStream, align, cancelTurn, close };
 }
 
 module.exports = { createSpeechService };

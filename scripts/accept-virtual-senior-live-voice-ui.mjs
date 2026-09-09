@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const port = Number(process.argv.find((item) => item.startsWith("--port="))?.split("=")[1] || 9352);
+const requireVoicePass = process.argv.includes("--require-voice-pass");
+const skipRetry = process.argv.includes("--skip-retry");
 const outputDirectory = path.resolve(process.argv.find((item) => item.startsWith("--out="))?.slice(6) || "QA-EXTERNAL/virtual-senior-community/live-voice-ui-current");
 await fs.mkdir(outputDirectory, { recursive: true });
 
@@ -122,17 +124,61 @@ const selectionAudit = await control.evaluate(`(() => ({
 }))()`);
 const selectionScreenshot = await capture(control, "02-single-round-selection-1440x1024.png");
 
+await control.evaluate(`(() => {
+  window.__voiceEventAudit = [];
+  window.__voiceEventAuditUnsubscribe?.();
+  window.__voiceEventAuditUnsubscribe = window.kioskBridge?.onVirtualSeniorLiveEvent?.((event) => {
+    if (event?.type !== 'voice-audio') return;
+    const samples = event.payload?.samples;
+    window.__voiceEventAudit.push({
+      sequence: event.sequence,
+      stage: event.payload?.stage,
+      constructor: samples?.constructor?.name || null,
+      length: Number.isSafeInteger(samples?.length) ? samples.length : null,
+      keys: samples && typeof samples === 'object' ? Object.keys(samples).length : null,
+    });
+  });
+  return true;
+})()`);
+
 await control.evaluate("document.querySelector('.live-primary').click(); true");
 await waitFor(() => control.evaluate("document.querySelector('.live-section-heading .is-running')?.innerText.includes('运行中')"), 10_000, "单项语音测试启动");
-await delay(1200);
-const runningScreenshot = await capture(control, "03-live-voice-running-1440x1024.png");
-await waitFor(() => control.evaluate("Boolean([...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果')))"), 180_000, "单项语音测试结束");
+let runFinished = false;
+const avatarMotionAudit = [];
+const avatarMotionScreenshots = [];
+const capturedVisemes = new Set();
+const motionCapture = (async () => {
+  while (!runFinished) {
+    const sample = await control.evaluate(`(() => { const avatar = document.querySelector('.live-product-frame .station-advisor-digital-human'); return avatar ? { speaking: avatar.classList.contains('is-speaking'), viseme: avatar.dataset.viseme || '', alignment: avatar.dataset.visemeAlignment || 'none', event: avatar.dataset.visemeEvent || '' } : null; })()`);
+    if (sample?.speaking) {
+      avatarMotionAudit.push({ atMs: Date.now(), ...sample });
+      if (sample.viseme && sample.viseme !== "CLOSED" && !capturedVisemes.has(sample.viseme) && avatarMotionScreenshots.length < 3) {
+        capturedVisemes.add(sample.viseme);
+        avatarMotionScreenshots.push(await capture(control, `03-avatar-speaking-${avatarMotionScreenshots.length + 1}-${sample.viseme}.png`));
+      }
+    }
+    await delay(80);
+  }
+})();
+// Do not force a viewport resize or screenshot while the real AudioContext is
+// synthesizing/playing. CDP capture can suspend an Electron compositor long
+// enough to invalidate the product playback receipt on some macOS runs.
+const runningScreenshot = null;
+try {
+  await waitFor(() => control.evaluate("Boolean([...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果')))"), 180_000, "单项语音测试结束");
+} finally {
+  runFinished = true;
+  await motionCapture;
+}
 const finalState = await control.evaluate(`(() => ({
   status: document.querySelector('.live-actions [role=status]')?.innerText,
   voice: document.querySelector('.live-observer-note')?.innerText.replace(/\\s+/g, ' ').trim(),
   messages: document.querySelectorAll('[data-observed-message-id]').length,
   noteClass: document.querySelector('.live-observer-note')?.className,
 }))()`);
+const voiceEventAudit = await control.evaluate("window.__voiceEventAudit || []");
+const voicePlaybackAudit = await control.evaluate("window.__voicePlaybackAudit || null");
+const voiceHandlerAudit = await control.evaluate("window.__voiceHandlerAudit || null");
 await control.evaluate("[...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果')).click(); true");
 await waitFor(() => control.evaluate("Boolean(document.querySelector('.live-result-banner'))"), 10_000, "测试结果详情");
 const resultAudit = await control.evaluate(`(() => ({
@@ -147,19 +193,23 @@ const resultScreenshot = await capture(control, "04-live-voice-result-1440x1024.
 const narrowScreenshot = await capture(control, "05-live-result-750x1200.png", 750, 1200);
 const narrowAudit = await control.evaluate(`(() => { const root = document.querySelector('.live-observer'); return { overflow: root.scrollWidth > root.clientWidth, mobileTabs: getComputedStyle(document.querySelector('.live-mobile-tabs')).display, dialogWidth: document.querySelector('dialog.live-detail')?.getBoundingClientRect().width }; })()`);
 
-await control.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1024, deviceScaleFactor: 1, mobile: false });
-await control.evaluate("document.querySelector('.live-result-banner button')?.click(); true");
-await waitFor(() => control.evaluate("document.querySelector('.live-primary')?.innerText.includes('停止测试') && !document.querySelector('.live-primary')?.disabled"), 10_000, "历史记录重测启动");
-await control.evaluate("document.querySelector('.live-primary').click(); true");
-await waitFor(() => control.evaluate("Boolean([...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果'))) && !document.querySelector('.live-primary')?.innerText.includes('停止测试')"), 30_000, "重测停止记录");
-await control.evaluate("[...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果')).click(); true");
-await waitFor(() => control.evaluate("Boolean(document.querySelector('.live-result-banner'))"), 10_000, "重测结果详情");
-const retryAudit = await control.evaluate(`(() => ({
-  bannerClass: document.querySelector('.live-result-banner')?.className,
-  text: document.querySelector('dialog.live-detail')?.innerText.replace(/\\s+/g, ' ').slice(0, 800),
-  hasSourceLink: document.querySelector('dialog.live-detail')?.innerText.includes('来源 live-'),
-}))()`);
-const retryScreenshot = await capture(control, "06-retry-linked-blocked-1440x1024.png");
+let retryAudit = { skipped: true, reason: "single-pass-voice-acceptance" };
+let retryScreenshot = null;
+if (!skipRetry) {
+  await control.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1024, deviceScaleFactor: 1, mobile: false });
+  await control.evaluate("document.querySelector('.live-result-banner button')?.click(); true");
+  await waitFor(() => control.evaluate("document.querySelector('.live-primary')?.innerText.includes('停止测试') && !document.querySelector('.live-primary')?.disabled"), 10_000, "历史记录重测启动");
+  await control.evaluate("document.querySelector('.live-primary').click(); true");
+  await waitFor(() => control.evaluate("Boolean([...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果'))) && !document.querySelector('.live-primary')?.innerText.includes('停止测试')"), 30_000, "重测停止记录");
+  await control.evaluate("[...document.querySelectorAll('.live-observer-note button')].find((item) => item.innerText.includes('查看本次结果')).click(); true");
+  await waitFor(() => control.evaluate("Boolean(document.querySelector('.live-result-banner'))"), 10_000, "重测结果详情");
+  retryAudit = await control.evaluate(`(() => ({
+    bannerClass: document.querySelector('.live-result-banner')?.className,
+    text: document.querySelector('dialog.live-detail')?.innerText.replace(/\\s+/g, ' ').slice(0, 800),
+    hasSourceLink: document.querySelector('dialog.live-detail')?.innerText.includes('来源 live-'),
+  }))()`);
+  retryScreenshot = await capture(control, "06-retry-linked-blocked-1440x1024.png");
+}
 
 const report = {
   schemaVersion: 1,
@@ -168,13 +218,21 @@ const report = {
   initialAudit,
   selectionAudit,
   finalState,
+  voiceEventAudit,
+  voicePlaybackAudit,
+  voiceHandlerAudit,
+  avatarMotionAudit,
   resultAudit,
   narrowAudit,
   retryAudit,
   consoleErrors: control.errors,
-  screenshots: { initialScreenshot, selectionScreenshot, runningScreenshot, resultScreenshot, narrowScreenshot, retryScreenshot },
+  screenshots: { initialScreenshot, selectionScreenshot, runningScreenshot, avatarMotionScreenshots, resultScreenshot, narrowScreenshot, retryScreenshot },
 };
-report.result = initialAudit.namesAreChinese && initialAudit.oneSided === 0 && initialAudit.smallControls === 0 && !initialAudit.overflow && selectionAudit.totalRounds === 22 && selectionAudit.checkedRounds === 1 && resultAudit.retryVisible && resultAudit.resultRows === 1 && /is-passed|is-blocked|is-failed/.test(resultAudit.bannerClass || "") && !narrowAudit.overflow && retryAudit.hasSourceLink && /is-passed|is-blocked|is-failed/.test(retryAudit.bannerClass || "") && control.errors.length === 0 ? "PASS" : "FAIL";
+const voiceOutcomeAccepted = requireVoicePass ? /is-passed/.test(resultAudit.bannerClass || "") : /is-passed|is-blocked|is-failed/.test(resultAudit.bannerClass || "");
+const distinctSpeakingVisemes = new Set(avatarMotionAudit.map((item) => item.viseme).filter((item) => item && item !== "CLOSED"));
+const avatarMotionAccepted = !requireVoicePass || (avatarMotionAudit.some((item) => item.alignment === "sensevoice-character-timestamps") && distinctSpeakingVisemes.size >= 3 && avatarMotionScreenshots.length >= 3);
+const retryAccepted = skipRetry || (retryAudit.hasSourceLink && /is-passed|is-blocked|is-failed/.test(retryAudit.bannerClass || ""));
+report.result = initialAudit.namesAreChinese && initialAudit.oneSided === 0 && initialAudit.smallControls === 0 && !initialAudit.overflow && selectionAudit.totalRounds === 22 && selectionAudit.checkedRounds === 1 && resultAudit.retryVisible && resultAudit.resultRows === 1 && voiceOutcomeAccepted && avatarMotionAccepted && !narrowAudit.overflow && retryAccepted && control.errors.length === 0 ? "PASS" : "FAIL";
 await fs.writeFile(path.join(outputDirectory, "live-voice-ui-report.json"), `${JSON.stringify(report, null, 2)}\n`);
 initial.socket.close();
 if (control !== initial) control.socket.close();
